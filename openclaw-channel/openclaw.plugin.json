@@ -1,0 +1,14 @@
+{
+  "name": "@jarvis/openclaw-channel",
+  "version": "0.1.0",
+  "type": "module",
+  "openclaw": {
+    "extensions": ["./index.ts"],
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "jarvis-openclaw",
+      "label": "Jarvis OpenClaw Bridge",
+      "blurb": "Connect OpenClaw to the Jarvis chat bridge."
+    }
+  }
+}

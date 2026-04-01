@@ -1,0 +1,31 @@
+{
+  "name": "@jarvis/openclaw-channel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev:bridge": "tsx src/standalone-server.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "openclaw": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "jarvis-openclaw",
+      "label": "Jarvis OpenClaw Bridge",
+      "blurb": "Connect OpenClaw to the Jarvis chat bridge."
+    }
+  }
+}

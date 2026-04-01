@@ -1,0 +1,12 @@
+.gradle/
+build/
+server/build/
+openclaw-channel/node_modules/
+openclaw-channel/dist/
+openclaw-channel/.vite/
+*.log
+*.pem
+*.key
+*.crt
+.idea/
+.vscode/
