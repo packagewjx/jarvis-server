@@ -115,9 +115,11 @@ class ChatBridgeService(
             return
         }
 
+        val userMessageId = nextId("msg_srv_user")
         val assistantMessageId = nextId("msg_srv_assistant")
         val run = CachedRun(
             requestId = nextId("req"),
+            userMessageId = userMessageId,
             assistantMessageId = assistantMessageId,
         )
         val previous = runs.putIfAbsent(runKey, run)
@@ -144,7 +146,7 @@ class ChatBridgeService(
                 run,
                 envelope.serverEvent(
                     event = "message.ack",
-                    messageId = assistantMessageId,
+                    messageId = userMessageId,
                     payload = AckPayload(true),
                 ),
             )
@@ -158,6 +160,7 @@ class ChatBridgeService(
                     payload = RolePayload("assistant"),
                 ),
             )
+            run.assistantStarted = true
 
             channelGateway.streamEvents(run.requestId).collect { event ->
                 forwardChannelEvent(session, envelope, run, event)
@@ -169,7 +172,7 @@ class ChatBridgeService(
                 run,
                 envelope.serverEvent(
                     event = "message.error",
-                    messageId = assistantMessageId,
+                    messageId = run.errorMessageId(),
                     payload = ErrorPayload("CHANNEL_BRIDGE_FAILED", ex.message ?: "Bridge request failed"),
                 ),
             )
@@ -286,7 +289,7 @@ class ChatBridgeService(
                     run,
                     sourceEnvelope.serverEvent(
                         event = "message.error",
-                        messageId = run.assistantMessageId,
+                        messageId = run.errorMessageId(),
                         payload = ErrorPayload(event.code, event.message),
                     ),
                 )
@@ -372,6 +375,9 @@ class ChatBridgeService(
 
     private fun runKey(conversationId: String, clientMessageId: String): String =
         "$conversationId::$clientMessageId"
+
+    private fun CachedRun.errorMessageId(): String =
+        if (assistantStarted) assistantMessageId else userMessageId
 
     private fun nextId(prefix: String): String =
         "${prefix}_${UUID.randomUUID().toString().replace("-", "")}"

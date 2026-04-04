@@ -22,6 +22,7 @@ import jarvis.server.model.ChannelSendAccepted
 import jarvis.server.model.ChannelSendRequest
 import jarvis.server.model.ChannelStreamEvent
 import jarvis.server.util.TlsUtils
+import java.net.URI
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
@@ -35,6 +36,7 @@ class HttpsSseChannelGateway(
     },
 ) : ChannelGateway {
     private val logger = KotlinLogging.logger {}
+    private val channelHost = URI(config.baseUrl).host
 
     private val client = HttpClient(CIO) {
         install(ContentNegotiation) {
@@ -48,7 +50,8 @@ class HttpsSseChannelGateway(
         engine {
             https {
                 trustManager = TlsUtils.buildTrustManager(config.caCertPath)
-                serverName = if (config.hostnameVerification) null else ""
+                // Keep SNI host non-empty; empty string can fail certificate hostname checks in CIO TLS.
+                serverName = if (config.hostnameVerification) null else channelHost
             }
         }
         expectSuccess = false

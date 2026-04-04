@@ -111,6 +111,7 @@ in `scripts/deploy.local.env`.
 ## Notes
 
 - The Kotlin bridge is the source of truth for client-visible `message_id` values and sequence ordering.
+- `message.ack.message_id` is the user message id, while `message.start/delta/complete` use assistant message id. The two ids are always different.
 - Idempotency is enforced per `conversation_id + client_message_id` in memory.
-- The TypeScript module includes a demo OpenClaw event source so the bridge can be exercised before wiring a real OpenClaw account.
-- Replace the demo event source in `openclaw-channel/src/bridge-service.ts` with real OpenClaw event subscriptions when the target channel account is ready.
+- The TypeScript channel bridge now calls `openclaw agent --json` to fetch real model replies.
+- You can tune bridge runtime behavior with optional env vars such as `OPENCLAW_AGENT_WORKDIR`, `OPENCLAW_AGENT_ID`, `OPENCLAW_AGENT_LOCAL`, and `OPENCLAW_AGENT_TIMEOUT_MS`.

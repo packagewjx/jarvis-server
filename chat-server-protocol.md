@@ -69,12 +69,36 @@ All WebSocket frames should use one unified envelope.
 - `event`: event type string
 - `trace_id`: request / event trace id
 - `conversation_id`: conversation id
-- `message_id`: server-side message id
-- `client_message_id`: client local message id, mainly used for ack mapping
+- `message_id`: server-side message entity id
+- `client_message_id`: client request turn id used for event correlation
 - `card_id`: target card id when updating a specific card
 - `seq`: sequence number for ordering deltas or chunks
 - `timestamp`: server event time in ms
 - `payload`: event-specific body
+
+## Message ID Semantics
+
+- `message_id` identifies one message entity.
+- `client_message_id` identifies one client send turn.
+- For one normal request-reply turn, apply these rules:
+- `message.ack.message_id` must be user message id (for example `msg_srv_user_xxx`).
+- `message.start/message.delta/card.replace/audio.output.chunk/audio.output.complete/message.complete.message_id` must be assistant message id (for example `msg_srv_assistant_xxx`).
+- `message.ack.message_id` and assistant response `message_id` must not be equal.
+- For events tied to `message.send`, keep the same `client_message_id` from request.
+- For proactive server messages not tied to a user send, use `client_message_id: ""` and do not emit `message.ack`.
+
+## Server Event ID Contract
+
+| Event | `message_id` meaning | `client_message_id` |
+|---|---|---|
+| `message.ack` | user message id | required, copied from `message.send` |
+| `message.start` | assistant message id | required if tied to `message.send`, else `""` |
+| `message.delta` | same assistant id as `message.start` | same as `message.start` |
+| `card.replace` | target message entity id, usually assistant id | same as message context |
+| `audio.output.chunk` | same assistant id as `message.start` | same as `message.start` |
+| `audio.output.complete` | same assistant id as `message.start` | same as `message.start` |
+| `message.complete` | same assistant id as `message.start` | same as `message.start` |
+| `message.error` | failed message entity id (assistant preferred; user on send-phase fail) | include when available |
 
 ## Event Types
 
@@ -351,13 +375,15 @@ Server reply for heartbeat.
 ## Message Lifecycle
 
 1. client sends `message.send`
-2. server replies `message.ack`
+2. server replies `message.ack` with user message id
 3. server emits `message.start`
 4. server emits zero or more `message.delta`
 5. server may emit `card.replace` for image/audio/tool cards
 6. server may emit zero or more `audio.output.chunk`
 7. server emits `audio.output.complete`
 8. server emits `message.complete`
+
+Rule: step 2 uses user message id and steps 3-8 use assistant message id. These ids must be different.
 
 ## Media Handling
 
@@ -391,7 +417,8 @@ Server should treat `client_message_id` as idempotency key per conversation.
 If the same `client_message_id` is received again:
 
 - do not create a duplicate user message
-- return the same `message.ack`
+- return the same `message.ack` with the same user message id
+- keep the same assistant message id for the replayed stream/events
 - optionally resume the existing generation stream
 
 ## History API Recommendation

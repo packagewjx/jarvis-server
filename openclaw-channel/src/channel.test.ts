@@ -2,8 +2,15 @@ import { describe, expect, it } from "vitest";
 import { BridgeService } from "./bridge-service.js";
 
 describe("BridgeService", () => {
-  it("streams a completed demo response", async () => {
-    const service = new BridgeService();
+  it("streams a completed response from the configured runner", async () => {
+    const service = new BridgeService({
+      async run() {
+        return {
+          payloads: [{ text: "hello from real runner", mediaUrl: null }],
+          finishReason: "stop"
+        };
+      }
+    });
     const requestId = "req_test";
     await service.submit({
       requestId,
