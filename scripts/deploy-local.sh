@@ -33,6 +33,7 @@ CERT_DIR="${CERT_DIR:-${REPO_ROOT}/.certs}"
 
 OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-${HOME}/.openclaw/openclaw.json}"
 OPENCLAW_STATE_DIR="${OPENCLAW_STATE_DIR:-}"
+USE_SYSTEM_OPENCLAW="${USE_SYSTEM_OPENCLAW:-false}"
 
 OPENCLAW_CHANNEL_HOST="${OPENCLAW_CHANNEL_HOST:-127.0.0.1}"
 OPENCLAW_CHANNEL_PORT="${OPENCLAW_CHANNEL_PORT:-9443}"
@@ -105,7 +106,11 @@ run_openclaw() {
 
   (
     cd "${OPENCLAW_CHANNEL_DIR}"
-    env "${env_vars[@]}" npx openclaw "$@"
+    if [[ "${USE_SYSTEM_OPENCLAW}" == "true" ]]; then
+      env "${env_vars[@]}" openclaw "$@"
+    else
+      env "${env_vars[@]}" npx openclaw "$@"
+    fi
   )
 }
 
@@ -286,6 +291,9 @@ ensure_common_prerequisites() {
   need_command npx
   need_command openssl
   need_command curl
+  if [[ "${USE_SYSTEM_OPENCLAW}" == "true" ]]; then
+    need_command openclaw
+  fi
 }
 
 ensure_runtime_prerequisites() {

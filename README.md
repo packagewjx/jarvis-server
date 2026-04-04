@@ -96,6 +96,15 @@ Other actions:
 ./scripts/deploy-local.sh restart
 ```
 
+By default the script runs OpenClaw CLI via `npx openclaw` inside `openclaw-channel/`.
+If you want to use your system-installed OpenClaw binary, set:
+
+```bash
+USE_SYSTEM_OPENCLAW=true
+```
+
+in `scripts/deploy.local.env`.
+
 ## Notes
 
 - The Kotlin bridge is the source of truth for client-visible `message_id` values and sequence ordering.
