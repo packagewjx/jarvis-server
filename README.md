@@ -65,6 +65,9 @@ npm run dev:bridge
 ### Kotlin bridge
 
 The repo does not include a Gradle wrapper yet. Use a local Gradle installation or add the wrapper once Java/Gradle are available.
+Kotlin server build requires JDK 17.
+The Gradle settings are configured to auto-download a matching JDK toolchain when available.
+If your environment blocks toolchain download, install JDK 17 locally and ensure `java`/`javac` resolve to version 17.
 
 ```bash
 gradle :server:run

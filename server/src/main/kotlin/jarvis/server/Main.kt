@@ -1,6 +1,7 @@
 package jarvis.server
 
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
@@ -10,9 +11,9 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
-import io.ktor.server.websocket.close
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.CloseReason
+import io.ktor.websocket.close
 import jarvis.server.config.AppConfig
 import jarvis.server.gateway.HttpsSseChannelGateway
 import jarvis.server.service.ChatBridgeService

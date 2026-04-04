@@ -12,6 +12,7 @@ val ktorVersion = "2.3.12"
 val coroutinesVersion = "1.8.1"
 val kotlinLoggingVersion = "7.0.3"
 val junitVersion = "5.10.2"
+val logbackVersion = "1.2.13"
 
 application {
     mainClass.set("jarvis.server.MainKt")
@@ -33,6 +34,7 @@ dependencies {
     implementation("io.ktor:ktor-client-logging-jvm:$ktorVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
     implementation("io.github.oshai:kotlin-logging-jvm:$kotlinLoggingVersion")
+    runtimeOnly("ch.qos.logback:logback-classic:$logbackVersion")
 
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:$junitVersion")

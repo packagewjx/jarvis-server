@@ -75,6 +75,37 @@ need_command() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing command: $1"
 }
 
+java_major_version() {
+  local version="$1"
+  if [[ "${version}" == 1.* ]]; then
+    echo "${version#1.}" | cut -d. -f1
+  else
+    echo "${version}" | cut -d. -f1
+  fi
+}
+
+ensure_java17_toolchain() {
+  need_command java
+  need_command javac
+
+  local java_version
+  local javac_version
+  java_version="$(java -version 2>&1 | awk -F\" '/version/ {print $2; exit}')"
+  javac_version="$(javac --version 2>&1 | awk '{print $2; exit}')"
+
+  [[ -n "${java_version}" ]] || fail "Unable to parse \`java -version\` output"
+  [[ -n "${javac_version}" ]] || fail "Unable to parse \`javac --version\` output"
+
+  local java_major
+  local javac_major
+  java_major="$(java_major_version "${java_version}")"
+  javac_major="$(java_major_version "${javac_version}")"
+
+  if [[ "${java_major}" != "17" || "${javac_major}" != "17" ]]; then
+    fail "Java 17 is required (found java=${java_version}, javac=${javac_version}). Install JDK 17 and retry."
+  fi
+}
+
 require_start_config() {
   [[ -n "${JARVIS_CHANNEL_AUTH_TOKEN:-}" ]] || fail "JARVIS_CHANNEL_AUTH_TOKEN is required"
   [[ -n "${OPENCLAW_CHANNEL_AUTH_TOKEN:-}" ]] || fail "OPENCLAW_CHANNEL_AUTH_TOKEN is required"
@@ -303,6 +334,7 @@ ensure_runtime_prerequisites() {
   else
     need_command "${GRADLE_CMD}"
   fi
+  ensure_java17_toolchain
 }
 
 usage() {

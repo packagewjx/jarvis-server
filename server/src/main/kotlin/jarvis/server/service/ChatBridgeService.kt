@@ -1,8 +1,8 @@
 package jarvis.server.service
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.ktor.server.websocket.WebSocketServerSession
 import io.ktor.websocket.Frame
-import io.ktor.websocket.WebSocketServerSession
 import io.ktor.websocket.readText
 import jarvis.server.config.AppConfig
 import jarvis.server.gateway.ChannelGateway
@@ -45,7 +45,10 @@ class ChatBridgeService(
                 traceId = nextTraceId("welcome"),
                 conversationId = "",
                 timestamp = now(),
-                payload = json.encodeToJsonElement(WelcomePayload(config.userId, now())),
+                payload = json.encodeToJsonElement(
+                    WelcomePayload.serializer(),
+                    WelcomePayload(config.userId, now()),
+                ),
             )
         )
 
@@ -102,7 +105,10 @@ class ChatBridgeService(
     }
 
     private suspend fun handleMessageSend(session: WebSocketServerSession, envelope: ChatEnvelope) {
-        val payload = json.decodeFromJsonElement<MessageSendPayload>(requireNotNull(envelope.payload))
+        val payload = json.decodeFromJsonElement(
+            MessageSendPayload.serializer(),
+            requireNotNull(envelope.payload),
+        )
         val runKey = runKey(envelope.conversationId, envelope.clientMessageId)
         runs[runKey]?.let {
             replayCachedRun(session, it)
@@ -322,7 +328,10 @@ class ChatBridgeService(
                 messageId = messageId,
                 clientMessageId = clientMessageId,
                 timestamp = now(),
-                payload = json.encodeToJsonElement(ErrorPayload(code, message)),
+                payload = json.encodeToJsonElement(
+                    ErrorPayload.serializer(),
+                    ErrorPayload(code, message),
+                ),
             ),
         )
     }
