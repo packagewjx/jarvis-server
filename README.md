@@ -26,6 +26,17 @@ This repository contains a two-module bridge between a chat client and OpenClaw:
 - `JARVIS_SERVER_PORT` default `8080`
 - `JARVIS_SERVER_AUTH_TOKEN` default `dev-client-token`
 - `JARVIS_SERVER_USER_ID` default `dev-user`
+- `JARVIS_XFYUN_IAT_API_KEY` optional; required to enable `GET /api/voice/iat-sign-url`
+- `JARVIS_XFYUN_IAT_API_SECRET` optional; required to enable `GET /api/voice/iat-sign-url`
+- `JARVIS_XFYUN_IAT_HOST` default `iat.cn-huabei-1.xf-yun.com`
+- `JARVIS_XFYUN_IAT_PATH` default `/v1`
+- `JARVIS_XFYUN_IAT_TTL_SEC` default `120`
+- `JARVIS_XFYUN_IAT_RATE_LIMIT_PER_MIN` default `30`
+- `JARVIS_XFYUN_IAT_DEFAULT_SAMPLE_RATE` default `16000` (allowed: `16000`/`8000`)
+- `JARVIS_XFYUN_IAT_DEFAULT_DOMAIN` default `slm`
+- `JARVIS_XFYUN_IAT_DEFAULT_LANGUAGE` default `zh_cn`
+- `JARVIS_XFYUN_IAT_DEFAULT_ACCENT` default `mulacc`
+- `JARVIS_XFYUN_IAT_AUDIO_ENCODING` default `lame`
 - `JARVIS_CHANNEL_BASE_URL` required, must start with `https://`
 - `JARVIS_CHANNEL_AUTH_TOKEN` required
 - `JARVIS_CHANNEL_CONNECT_TIMEOUT_MS` default `10000`
@@ -98,6 +109,25 @@ Other actions:
 ./scripts/deploy-local.sh stop
 ./scripts/deploy-local.sh restart
 ```
+
+### IAT sign-url API
+
+`server` now exposes:
+
+`GET /api/voice/iat-sign-url`
+
+Use the same bearer token as websocket auth:
+
+`Authorization: Bearer <JARVIS_SERVER_AUTH_TOKEN>`
+
+Optional query parameters:
+
+- `sampleRate` (`16000` or `8000`)
+- `domain` (currently `slm`)
+- `language` (currently `zh_cn`)
+- `accent` (default `mulacc`)
+
+Success response includes `data.wsUrl`, `expireAt`, `ttlSec`, and the effective session config.
 
 By default the script runs OpenClaw CLI via `npx openclaw` inside `openclaw-channel/`.
 If you want to use your system-installed OpenClaw binary, set:

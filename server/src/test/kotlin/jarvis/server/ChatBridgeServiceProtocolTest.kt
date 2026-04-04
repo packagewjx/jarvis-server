@@ -18,6 +18,7 @@ import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import jarvis.server.config.AppConfig
 import jarvis.server.config.ChannelConfig
+import jarvis.server.config.XfyunIatConfig
 import jarvis.server.gateway.ChannelGateway
 import jarvis.server.model.ChannelSendRequest
 import jarvis.server.model.ChannelStreamEvent
@@ -174,6 +175,19 @@ class ChatBridgeServiceProtocolTest {
                     readTimeoutMs = 1000,
                     caCertPath = null,
                     hostnameVerification = true,
+                ),
+                iat = XfyunIatConfig(
+                    apiKey = null,
+                    apiSecret = null,
+                    host = "iat.cn-huabei-1.xf-yun.com",
+                    path = "/v1",
+                    ttlSec = 120,
+                    rateLimitPerMinute = 30,
+                    defaultSampleRate = 16000,
+                    defaultDomain = "slm",
+                    defaultLanguage = "zh_cn",
+                    defaultAccent = "mulacc",
+                    audioEncoding = "lame",
                 ),
             ),
             channelGateway = gateway,

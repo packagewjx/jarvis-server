@@ -8,6 +8,7 @@ data class AppConfig(
     val authToken: String,
     val userId: String,
     val channel: ChannelConfig,
+    val iat: XfyunIatConfig,
 ) {
     companion object {
         fun fromEnvironment(): AppConfig {
@@ -17,6 +18,7 @@ data class AppConfig(
                 authToken = env("JARVIS_SERVER_AUTH_TOKEN", "dev-client-token"),
                 userId = env("JARVIS_SERVER_USER_ID", "dev-user"),
                 channel = ChannelConfig.fromEnvironment(),
+                iat = XfyunIatConfig.fromEnvironment(),
             )
         }
 
@@ -25,6 +27,50 @@ data class AppConfig(
                 ?: default
                 ?: error("Missing required environment variable: $name")
         }
+    }
+}
+
+data class XfyunIatConfig(
+    val apiKey: String?,
+    val apiSecret: String?,
+    val host: String,
+    val path: String,
+    val ttlSec: Long,
+    val rateLimitPerMinute: Int,
+    val defaultSampleRate: Int,
+    val defaultDomain: String,
+    val defaultLanguage: String,
+    val defaultAccent: String,
+    val audioEncoding: String,
+) {
+    companion object {
+        fun fromEnvironment(): XfyunIatConfig {
+            return XfyunIatConfig(
+                apiKey = optionalEnv("JARVIS_XFYUN_IAT_API_KEY"),
+                apiSecret = optionalEnv("JARVIS_XFYUN_IAT_API_SECRET"),
+                host = env("JARVIS_XFYUN_IAT_HOST", "iat.cn-huabei-1.xf-yun.com"),
+                path = normalizePath(env("JARVIS_XFYUN_IAT_PATH", "/v1")),
+                ttlSec = env("JARVIS_XFYUN_IAT_TTL_SEC", "120").toLong(),
+                rateLimitPerMinute = env("JARVIS_XFYUN_IAT_RATE_LIMIT_PER_MIN", "30").toInt(),
+                defaultSampleRate = env("JARVIS_XFYUN_IAT_DEFAULT_SAMPLE_RATE", "16000").toInt(),
+                defaultDomain = env("JARVIS_XFYUN_IAT_DEFAULT_DOMAIN", "slm"),
+                defaultLanguage = env("JARVIS_XFYUN_IAT_DEFAULT_LANGUAGE", "zh_cn"),
+                defaultAccent = env("JARVIS_XFYUN_IAT_DEFAULT_ACCENT", "mulacc"),
+                audioEncoding = env("JARVIS_XFYUN_IAT_AUDIO_ENCODING", "lame"),
+            )
+        }
+
+        private fun env(name: String, default: String? = null): String {
+            return System.getenv(name)
+                ?: default
+                ?: error("Missing required environment variable: $name")
+        }
+
+        private fun optionalEnv(name: String): String? =
+            System.getenv(name)?.trim()?.takeIf { it.isNotEmpty() }
+
+        private fun normalizePath(path: String): String =
+            if (path.startsWith("/")) path else "/$path"
     }
 }
 

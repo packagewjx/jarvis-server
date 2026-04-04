@@ -26,6 +26,54 @@ Use HTTP for:
 - media pre-sign URL generation
 - TTS / ASR credential bootstrap if needed
 
+### HTTP API: XFYun IAT Sign URL
+
+Route:
+
+- `GET /api/voice/iat-sign-url`
+
+Auth:
+
+- `Authorization: Bearer <token>`
+- unauthenticated request returns `40101`
+
+Query (all optional):
+
+- `sampleRate`: `16000` or `8000`, default `16000`
+- `domain`: currently fixed to `slm`
+- `language`: currently fixed to `zh_cn`
+- `accent`: default `mulacc`
+
+Success response example:
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "wsUrl": "wss://iat.cn-huabei-1.xf-yun.com/v1?authorization=...&date=...&host=iat.cn-huabei-1.xf-yun.com",
+    "expireAt": 1775366400000,
+    "ttlSec": 120,
+    "config": {
+      "sampleRate": 16000,
+      "domain": "slm",
+      "language": "zh_cn",
+      "accent": "mulacc",
+      "audioEncoding": "lame"
+    }
+  },
+  "traceId": "req_xxx"
+}
+```
+
+Error codes:
+
+- `40001`: invalid query params
+- `40101`: unauthorized
+- `42901`: rate limited
+- `50001`: sign generation failed
+- `50002`: missing server config
+
 ### 2. WebSocket
 
 Use a single authenticated WebSocket connection for:
