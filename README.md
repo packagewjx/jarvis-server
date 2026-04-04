@@ -70,6 +70,32 @@ The repo does not include a Gradle wrapper yet. Use a local Gradle installation 
 gradle :server:run
 ```
 
+### One-shot local deploy script
+
+The repository now includes a local deployment script that:
+
+1. Reads env-style config from a file
+2. Ensures TLS materials exist for the HTTPS channel bridge
+3. Configures OpenClaw channel `jarvis-openclaw` in `~/.openclaw/openclaw.json` (or your override)
+4. Starts both `openclaw-channel` and Kotlin `server` in background
+
+```bash
+cp scripts/deploy.local.env.example scripts/deploy.local.env
+# edit scripts/deploy.local.env
+
+chmod +x scripts/deploy-local.sh
+./scripts/deploy-local.sh start
+```
+
+Other actions:
+
+```bash
+./scripts/deploy-local.sh configure
+./scripts/deploy-local.sh status
+./scripts/deploy-local.sh stop
+./scripts/deploy-local.sh restart
+```
+
 ## Notes
 
 - The Kotlin bridge is the source of truth for client-visible `message_id` values and sequence ordering.
