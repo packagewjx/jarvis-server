@@ -203,9 +203,6 @@ copy_outputs_to_arch_dirs() {
   local tmp_pem="${ARCH_CERTS_DIR}/.${ARCH_CERT_PEM_NAME}.tmp"
   local tmp_key="${ARCH_PRIVATE_DIR}/.${ARCH_KEY_NAME}.tmp"
 
-  [[ -f "${src_fullchain}" ]] || fail "Certificate not found: ${src_fullchain}"
-  [[ -f "${src_privkey}" ]] || fail "Private key not found: ${src_privkey}"
-
   local use_docker_copy="false"
   case "${COPY_WITH_DOCKER}" in
     true)
@@ -249,6 +246,8 @@ copy_outputs_to_arch_dirs() {
         mv -f "/dst-private/.${ARCH_KEY_NAME}.tmp" "/dst-private/${ARCH_KEY_NAME}"
       '
   else
+  [[ -f "${src_fullchain}" ]] || fail "Certificate not found: ${src_fullchain}"
+  [[ -f "${src_privkey}" ]] || fail "Private key not found: ${src_privkey}"
   # .crt and .pem both use fullchain to satisfy common HTTPS server expectations.
   install -m 0644 "${src_fullchain}" "${tmp_crt}"
   install -m 0644 "${src_fullchain}" "${tmp_pem}"
