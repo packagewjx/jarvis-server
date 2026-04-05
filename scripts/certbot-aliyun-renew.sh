@@ -239,8 +239,9 @@ copy_outputs_to_arch_dirs() {
       -v "${LETSENCRYPT_STATE_DIR}:/src:ro" \
       -v "${ARCH_CERTS_DIR}:/dst-certs" \
       -v "${ARCH_PRIVATE_DIR}:/dst-private" \
+      --entrypoint /bin/sh \
       "${COPY_HELPER_IMAGE}" \
-      /bin/sh -c '
+      -c '
         set -eu
         src="/src/live/${CERT_DOMAIN}"
         [ -f "${src}/fullchain.pem" ] || { echo "missing ${src}/fullchain.pem" >&2; exit 1; }
