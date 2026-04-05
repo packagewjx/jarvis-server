@@ -52,6 +52,8 @@ validate_common_config() {
   ARCH_CERT_CRT_NAME="${ARCH_CERT_CRT_NAME:-${CERT_DOMAIN}.crt}"
   ARCH_CERT_PEM_NAME="${ARCH_CERT_PEM_NAME:-${CERT_DOMAIN}.pem}"
   ARCH_KEY_NAME="${ARCH_KEY_NAME:-${CERT_DOMAIN}.key}"
+  COPY_WITH_DOCKER="${COPY_WITH_DOCKER:-auto}"
+  COPY_HELPER_IMAGE="${COPY_HELPER_IMAGE:-alpine:3.20}"
   CERTBOT_DRY_RUN="${CERTBOT_DRY_RUN:-false}"
   POST_DEPLOY_CMD="${POST_DEPLOY_CMD:-}"
   CRON_SCHEDULE="${CRON_SCHEDULE:-0 3 1 * *}"
@@ -140,7 +142,6 @@ copy_outputs_to_arch_dirs() {
 
   local live_dir="${LETSENCRYPT_STATE_DIR}/live/${CERT_DOMAIN}"
   local src_fullchain="${live_dir}/fullchain.pem"
-  local src_cert="${live_dir}/cert.pem"
   local src_privkey="${live_dir}/privkey.pem"
   local dst_crt="${ARCH_CERTS_DIR}/${ARCH_CERT_CRT_NAME}"
   local dst_pem="${ARCH_CERTS_DIR}/${ARCH_CERT_PEM_NAME}"
@@ -150,9 +151,51 @@ copy_outputs_to_arch_dirs() {
   local tmp_key="${ARCH_PRIVATE_DIR}/.${ARCH_KEY_NAME}.tmp"
 
   [[ -f "${src_fullchain}" ]] || fail "Certificate not found: ${src_fullchain}"
-  [[ -f "${src_cert}" ]] || fail "Certificate not found: ${src_cert}"
   [[ -f "${src_privkey}" ]] || fail "Private key not found: ${src_privkey}"
 
+  local use_docker_copy="false"
+  case "${COPY_WITH_DOCKER}" in
+    true)
+      use_docker_copy="true"
+      ;;
+    false)
+      use_docker_copy="false"
+      ;;
+    auto)
+      if [[ ! -w "${ARCH_CERTS_DIR}" || ! -w "${ARCH_PRIVATE_DIR}" ]]; then
+        use_docker_copy="true"
+      fi
+      ;;
+    *)
+      fail "Invalid COPY_WITH_DOCKER=${COPY_WITH_DOCKER}. Use auto|true|false"
+      ;;
+  esac
+
+  if [[ "${use_docker_copy}" == "true" ]]; then
+    need_command docker
+    log "Copying cert/key via docker helper image ${COPY_HELPER_IMAGE}"
+    docker run --rm \
+      -e CERT_DOMAIN="${CERT_DOMAIN}" \
+      -e ARCH_CERT_CRT_NAME="${ARCH_CERT_CRT_NAME}" \
+      -e ARCH_CERT_PEM_NAME="${ARCH_CERT_PEM_NAME}" \
+      -e ARCH_KEY_NAME="${ARCH_KEY_NAME}" \
+      -v "${LETSENCRYPT_STATE_DIR}:/src:ro" \
+      -v "${ARCH_CERTS_DIR}:/dst-certs" \
+      -v "${ARCH_PRIVATE_DIR}:/dst-private" \
+      "${COPY_HELPER_IMAGE}" \
+      /bin/sh -c '
+        set -eu
+        src="/src/live/${CERT_DOMAIN}"
+        [ -f "${src}/fullchain.pem" ] || { echo "missing ${src}/fullchain.pem" >&2; exit 1; }
+        [ -f "${src}/privkey.pem" ] || { echo "missing ${src}/privkey.pem" >&2; exit 1; }
+        install -m 0644 "${src}/fullchain.pem" "/dst-certs/.${ARCH_CERT_CRT_NAME}.tmp"
+        install -m 0644 "${src}/fullchain.pem" "/dst-certs/.${ARCH_CERT_PEM_NAME}.tmp"
+        install -m 0600 "${src}/privkey.pem" "/dst-private/.${ARCH_KEY_NAME}.tmp"
+        mv -f "/dst-certs/.${ARCH_CERT_CRT_NAME}.tmp" "/dst-certs/${ARCH_CERT_CRT_NAME}"
+        mv -f "/dst-certs/.${ARCH_CERT_PEM_NAME}.tmp" "/dst-certs/${ARCH_CERT_PEM_NAME}"
+        mv -f "/dst-private/.${ARCH_KEY_NAME}.tmp" "/dst-private/${ARCH_KEY_NAME}"
+      '
+  else
   # .crt and .pem both use fullchain to satisfy common HTTPS server expectations.
   install -m 0644 "${src_fullchain}" "${tmp_crt}"
   install -m 0644 "${src_fullchain}" "${tmp_pem}"
@@ -160,6 +203,7 @@ copy_outputs_to_arch_dirs() {
   mv -f "${tmp_crt}" "${dst_crt}"
   mv -f "${tmp_pem}" "${dst_pem}"
   mv -f "${tmp_key}" "${dst_key}"
+  fi
 
   log "Deployed certificate (.crt): ${dst_crt}"
   log "Deployed certificate (.pem): ${dst_pem}"
