@@ -22,6 +22,11 @@ need_command() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing command: $1"
 }
 
+looks_like_placeholder() {
+  local value="$1"
+  [[ "${value}" == replace-with-* ]]
+}
+
 resolve_path() {
   local path="$1"
   if [[ "${path}" = /* ]]; then
@@ -64,6 +69,8 @@ validate_common_config() {
   [[ -n "${ALIYUN_ACCESS_KEY_ID:-}" ]] || fail "ALIYUN_ACCESS_KEY_ID is required"
   [[ -n "${ALIYUN_ACCESS_KEY_SECRET:-}" ]] || fail "ALIYUN_ACCESS_KEY_SECRET is required"
   [[ -n "${CERTBOT_EMAIL:-}" ]] || fail "CERTBOT_EMAIL is required"
+  looks_like_placeholder "${ALIYUN_ACCESS_KEY_ID}" && fail "ALIYUN_ACCESS_KEY_ID is still placeholder"
+  looks_like_placeholder "${ALIYUN_ACCESS_KEY_SECRET}" && fail "ALIYUN_ACCESS_KEY_SECRET is still placeholder"
 
   # Backward compatibility with old single directory config
   if [[ -n "${ARCH_CERT_DIR}" ]]; then
