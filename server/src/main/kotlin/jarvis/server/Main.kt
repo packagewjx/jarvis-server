@@ -40,6 +40,8 @@ import jarvis.server.model.PasswordChangeRequest
 import jarvis.server.model.PasswordForgotRequest
 import jarvis.server.model.PasswordForgotResponse
 import jarvis.server.model.PasswordResetRequest
+import jarvis.server.model.TtsSignUrlErrorResponse
+import jarvis.server.model.TtsSignUrlSuccessResponse
 import jarvis.server.model.UserMeResponse
 import jarvis.server.model.UserProfilePayload
 import jarvis.server.model.UserSessionListResponse
@@ -60,6 +62,8 @@ import jarvis.server.service.PasswordForgotResult
 import jarvis.server.service.PasswordResetResult
 import jarvis.server.service.RefreshResult
 import jarvis.server.service.RegisterResult
+import jarvis.server.service.TtsSignResult
+import jarvis.server.service.TtsSignUrlService
 import jarvis.server.service.VerifyConfirmResult
 import jarvis.server.service.VerifySendResult
 import kotlinx.serialization.json.Json
@@ -90,6 +94,7 @@ fun main() {
     val gateway = HttpsSseChannelGateway(config.channel)
     val chatBridgeService = ChatBridgeService(gateway, chatStore, sharedJson)
     val iatSignUrlService = IatSignUrlService(config.iat)
+    val ttsSignUrlService = TtsSignUrlService(config.tts)
 
     embeddedServer(Netty, host = config.host, port = config.port) {
         install(WebSockets)
@@ -501,6 +506,64 @@ fun main() {
                         call.respond(
                             status,
                             IatSignUrlErrorResponse(
+                                code = result.code,
+                                message = result.message,
+                                detail = result.detail,
+                                traceId = traceId,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            get("/api/voice/tts-sign-url") {
+                val traceId = "req_${System.currentTimeMillis()}"
+                val principal = authService.authenticateAccess(call.request.header("Authorization"))
+                if (principal == null) {
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        TtsSignUrlErrorResponse(
+                            code = 40101,
+                            message = "UNAUTHORIZED",
+                            detail = "missing or invalid bearer token",
+                            traceId = traceId,
+                        ),
+                    )
+                    return@get
+                }
+
+                val query = call.request.queryParameters
+                when (
+                    val result = ttsSignUrlService.createSignedUrl(
+                        userKey = principal.userId,
+                        vcnRaw = query["vcn"] ?: query["voice"],
+                        speedRaw = query["speed"],
+                        pitchRaw = query["pitch"],
+                        volumeRaw = query["volume"],
+                        sampleRateRaw = query["sampleRate"],
+                        audioEncodingRaw = query["audioEncoding"],
+                        textEncodingRaw = query["textEncoding"] ?: query["tte"],
+                    )
+                ) {
+                    is TtsSignResult.Success -> {
+                        call.respond(
+                            HttpStatusCode.OK,
+                            TtsSignUrlSuccessResponse(
+                                data = result.data,
+                                traceId = traceId,
+                            ),
+                        )
+                    }
+                    is TtsSignResult.Error -> {
+                        val status = when (result.code) {
+                            40001 -> HttpStatusCode.BadRequest
+                            40101 -> HttpStatusCode.Unauthorized
+                            42901 -> HttpStatusCode.TooManyRequests
+                            else -> HttpStatusCode.InternalServerError
+                        }
+                        call.respond(
+                            status,
+                            TtsSignUrlErrorResponse(
                                 code = result.code,
                                 message = result.message,
                                 detail = result.detail,

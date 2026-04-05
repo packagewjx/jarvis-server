@@ -1,0 +1,338 @@
+# Jarvis Chat Client Protocol v3（群组引导页版）
+
+## 1. 变更历史
+
+| 版本 | 日期 | 变更摘要 |
+| --- | --- | --- |
+| v3 | 2026-04-05 | 新增“首登群组引导页”规范；明确 `GET /api/groups/mine` 对新用户返回空列表；补充创建群入口的客户端占位策略与上线前兼容行为；新增 TTS 签名接口对齐说明。 |
+| v2 | 2026-04-05 | 引入用户+群组消息隔离、`events/sync` 增量同步、命令模式 `input_mode=command`。 |
+
+## 2. 目标
+
+- 客户端与服务端通过 `WebSocket` 实时收发消息。
+- 客户端进入群聊页面时，通过 `HTTP 增量同步` 自动补齐本地缺失消息。
+- 服务端按“用户 + 群组”隔离消息，避免跨用户或跨群串消息。
+- 客户端在注册/登录后，必须先完成“群组选择或入群”流程再进入聊天。
+
+## 3. 鉴权与用户体系
+
+### 3.1 注册
+
+`POST /api/auth/register`
+
+请求体：
+
+```json
+{
+  "username": "alice",
+  "password": "P@ssw0rd123"
+}
+```
+
+### 3.2 登录
+
+`POST /api/auth/login`
+
+请求体：
+
+```json
+{
+  "username": "alice",
+  "password": "P@ssw0rd123"
+}
+```
+
+### 3.3 刷新令牌
+
+`POST /api/auth/refresh`
+
+请求体：
+
+```json
+{
+  "refresh_token": "<jwt_refresh_token>"
+}
+```
+
+### 3.4 统一请求头
+
+所有 `HTTP` 和 `WebSocket` 请求都必须带：
+
+- `Authorization: Bearer <access_token>`
+
+## 4. 群组能力
+
+### 4.1 我的群组列表
+
+`GET /api/groups/mine`
+
+请求头：
+
+- `Authorization: Bearer <access_token>`
+
+成功响应示例：
+
+```json
+{
+  "items": [
+    {
+      "group_id": "g_001",
+      "name": "产品讨论群"
+    }
+  ]
+}
+```
+
+新用户行为（重要）：
+
+- 新注册用户默认**不会自动创建群组**。
+- 新注册用户默认**不会自动加入任何群组**。
+- 因此首次调用 `GET /api/groups/mine` 时，允许返回：
+
+```json
+{
+  "items": []
+}
+```
+
+### 4.2 邀请码入群
+
+`POST /api/groups/join`
+
+请求体：
+
+```json
+{
+  "join_code": "INVITE-9X3A2"
+}
+```
+
+成功响应示例：
+
+```json
+{
+  "group": {
+    "group_id": "g_001",
+    "name": "产品讨论群"
+  },
+  "membership": {
+    "joined_at": 1710000000000
+  }
+}
+```
+
+说明：
+
+- 重复入群按幂等成功处理。
+- 失败时常见返回 `404 INVALID_JOIN_CODE`。
+
+### 4.3 创建群入口约定（客户端）
+
+当前服务端正式能力：
+
+- 已上线：`GET /api/groups/mine`、`POST /api/groups/join`
+- 未上线：`POST /api/groups/create`
+
+客户端约定：
+
+- 群组引导页可以展示“创建群组”入口，但在服务端创建接口上线前应置灰或标记“即将上线”。
+- 若客户端尝试调用创建接口并收到 `404/405`，需要优雅降级到“邀请码入群”流程。
+
+## 5. 首登群组引导页（新增）
+
+### 5.1 触发时机
+
+注册或登录成功后：
+
+1. 调用 `GET /api/groups/mine`。
+2. 当 `items.length > 0`，进入“群组列表/最近会话页”。
+3. 当 `items.length == 0`，进入“群组引导页”。
+
+### 5.2 页面结构
+
+页面名建议：`群组引导页`。
+
+页面至少包含：
+
+- 区块 A：`创建群组`（可用时展示主按钮；未上线时置灰）
+- 区块 B：`输入邀请码加入`
+- 输入框：`join_code`
+- 按钮：`加入群组`
+
+### 5.3 交互流程
+
+邀请码入群流程：
+
+1. 用户输入 `join_code`。
+2. 调用 `POST /api/groups/join`。
+3. 成功后再次调用 `GET /api/groups/mine` 刷新列表。
+4. 自动跳转到刚加入的群聊页面。
+
+错误处理：
+
+- `404 INVALID_JOIN_CODE`：提示“邀请码无效或已失效”。
+- `401 UNAUTHORIZED`：触发刷新 token 或重新登录。
+- `429`：提示稍后重试。
+
+## 6. WebSocket 协议
+
+### 6.1 连接地址
+
+- `wss://<host>/ws/chat`
+
+### 6.2 Envelope（统一包体）
+
+```json
+{
+  "event": "message.delta",
+  "trace_id": "trace_001",
+  "group_id": "g_001",
+  "message_id": "msg_srv_assistant_001",
+  "client_message_id": "local_001",
+  "card_id": "card_text_main",
+  "seq": 3,
+  "timestamp": 1710000000123,
+  "event_id": 1024,
+  "payload": {
+    "delta": "你好"
+  }
+}
+```
+
+### 6.3 事件类型
+
+Server -> Client：
+
+- `session.welcome`
+- `message.ack`
+- `message.start`
+- `message.delta`
+- `card.replace`
+- `audio.output.chunk`
+- `audio.output.complete`
+- `message.complete`
+- `message.error`
+- `pong`
+
+Client -> Server：
+
+- `message.send`
+- `ping`
+
+### 6.4 `message_id` / `client_message_id` 语义
+
+1. `message.ack.message_id` 是用户消息 ID。
+2. `message.start/delta/complete/...` 的 `message_id` 是助手消息 ID。
+3. 用户消息 ID 和助手消息 ID 不能相同。
+4. 同一次发送回合，服务端下发事件中的 `client_message_id` 必须等于请求中的 `client_message_id`。
+
+## 7. 发送消息
+
+### 7.1 `message.send` 示例
+
+```json
+{
+  "event": "message.send",
+  "trace_id": "trace_local_001",
+  "group_id": "g_001",
+  "message_id": "",
+  "client_message_id": "local_001",
+  "card_id": "",
+  "seq": 0,
+  "timestamp": 1710000000000,
+  "payload": {
+    "role": "user",
+    "cards": [
+      {
+        "id": "card_text_1",
+        "cardType": "text",
+        "text": "你好",
+        "imageUrl": "",
+        "audioUrl": "",
+        "audioMime": "",
+        "durationMs": 0,
+        "extra": null
+      }
+    ],
+    "created_at": 1710000000000,
+    "input_mode": "text",
+    "command": null
+  }
+}
+```
+
+### 7.2 命令模式
+
+`payload.input_mode`：
+
+- `text`：普通文本对话
+- `command`：执行受控命令
+
+当前命令白名单：
+
+- `/help`
+- `/status`
+- `/new` 或 `/reset`
+- `/think <off|minimal|low|medium|high|xhigh>`
+- `/verbose <on|off>`
+
+## 8. 页面进入自动补齐（HTTP 增量同步）
+
+### 8.1 接口
+
+`GET /api/chat/groups/{groupId}/events/sync?after_event_id=<long>&limit=<int>`
+
+### 8.2 客户端同步算法
+
+1. 读取本地 `last_event_id`（按 `user_id + group_id` 存储）。
+2. 调用 `events/sync(after_event_id=last_event_id)`。
+3. 按返回顺序应用事件。
+4. 更新 `last_event_id = next_after_event_id`。
+5. 若 `has_more=true` 继续翻页，直到 `false`。
+6. 再建立 WS 并按 `event_id` 去重推进。
+
+## 9. 错误处理
+
+### 9.1 `message.error` payload
+
+```json
+{
+  "code": "CHANNEL_BRIDGE_FAILED",
+  "message": "Bridge request failed"
+}
+```
+
+常见错误码：
+
+- `FORBIDDEN_GROUP`：用户未加入目标群组。
+
+### 9.2 HTTP 错误码
+
+- `400`：参数错误
+- `401`：token 缺失、无效或过期
+- `403`：无权限
+- `404`：资源不存在（如邀请码无效）
+- `429`：频率限制
+- `500`：服务端内部错误
+
+## 10. 客户端最小改造清单（v3）
+
+1. 登录后先调用 `GET /api/groups/mine`。
+2. `mine` 为空时进入“群组引导页”。
+3. 完成 `POST /api/groups/join` 后再进入聊天页。
+4. 聊天页继续使用 `events/sync + ws` 的群组维度同步。
+5. 保持 `message_id` 双 ID 语义和 `event_id` 去重策略。
+
+## 11. 语音签名接口（IAT + TTS）
+
+### 11.1 IAT（语音识别）
+
+- `GET /api/voice/iat-sign-url`
+- 可选参数：`sampleRate`、`domain`、`language`、`accent`
+- 客户端应使用返回的 `data.config.appId/sampleRate/domain/language/accent/audioEncoding` 作为讯飞请求参数源
+
+### 11.2 TTS（语音合成）
+
+- `GET /api/voice/tts-sign-url`
+- 可选参数：`vcn`（或 `voice`）、`speed`、`pitch`、`volume`、`sampleRate`、`audioEncoding`、`textEncoding`（或 `tte`）
+- 客户端应使用返回的 `data.config.appId/vcn/speed/pitch/volume/aue/auf/tte` 作为讯飞请求参数源
