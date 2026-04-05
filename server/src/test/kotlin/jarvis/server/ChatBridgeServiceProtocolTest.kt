@@ -177,6 +177,7 @@ class ChatBridgeServiceProtocolTest {
                     hostnameVerification = true,
                 ),
                 iat = XfyunIatConfig(
+                    appId = null,
                     apiKey = null,
                     apiSecret = null,
                     host = "iat.cn-huabei-1.xf-yun.com",

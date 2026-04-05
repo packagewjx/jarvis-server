@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 
 class IatSignUrlServiceTest {
     private val fixedClock: Clock =
-        Clock.fixed(Instant.parse("2024-05-14T08:46:48Z"), ZoneOffset.UTC)
+        Clock.fixed(Instant.parse("2026-04-05T02:12:21Z"), ZoneOffset.UTC)
     private val credentialA = "mock_credential_a"
     private val credentialB = "mock_credential_b"
 
@@ -39,10 +39,11 @@ class IatSignUrlServiceTest {
         assertTrue(data.wsUrl.startsWith("wss://iat.cn-huabei-1.xf-yun.com/v1?"))
         assertEquals("iat.cn-huabei-1.xf-yun.com", query["host"])
         assertNotNull(query["authorization"])
-        assertEquals("Tue, 14 May 2024 08:46:48 GMT", query["date"])
+        assertEquals("Sun, 05 Apr 2026 02:12:21 GMT", query["date"])
         assertEquals(120, data.ttlSec)
-        assertEquals(1715676528000L, data.expireAt)
+        assertEquals(1775355261000L, data.expireAt)
         assertEquals(16000, data.config.sampleRate)
+        assertEquals("64ff2388", data.config.appId)
         assertEquals("slm", data.config.domain)
         assertEquals("zh_cn", data.config.language)
         assertEquals("mulacc", data.config.accent)
@@ -92,6 +93,27 @@ class IatSignUrlServiceTest {
     }
 
     @Test
+    fun `returns config missing when app id absent`() {
+        val service = IatSignUrlService(
+            config = validConfig().copy(appId = null),
+            clock = fixedClock,
+            rateLimiter = FixedWindowRateLimiter(windowMs = 60_000, limit = 10),
+        )
+
+        val result = service.createSignedUrl(
+            userKey = "user_1",
+            sampleRateRaw = null,
+            domainRaw = null,
+            languageRaw = null,
+            accentRaw = null,
+        )
+
+        val error = result as IatSignResult.Error
+        assertEquals(50002, error.code)
+        assertEquals("IAT_CONFIG_MISSING", error.message)
+    }
+
+    @Test
     fun `rate limiter blocks excessive requests`() {
         val service = IatSignUrlService(
             config = validConfig(),
@@ -122,6 +144,7 @@ class IatSignUrlServiceTest {
 
     private fun validConfig(): XfyunIatConfig {
         return XfyunIatConfig(
+            appId = "64ff2388",
             apiKey = credentialA,
             apiSecret = credentialB,
             host = "iat.cn-huabei-1.xf-yun.com",

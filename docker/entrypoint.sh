@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+export JARVIS_SERVER_HOST="${JARVIS_SERVER_HOST:-127.0.0.1}"
+export JARVIS_SERVER_PORT="${JARVIS_SERVER_PORT:-18080}"
+export JARVIS_SERVER_AUTH_TOKEN="${JARVIS_SERVER_AUTH_TOKEN:-dev-client-token}"
+export JARVIS_SERVER_USER_ID="${JARVIS_SERVER_USER_ID:-dev-user}"
+
+export JARVIS_CHANNEL_BASE_URL="${JARVIS_CHANNEL_BASE_URL:-https://127.0.0.1:9443}"
+export JARVIS_CHANNEL_AUTH_TOKEN="${JARVIS_CHANNEL_AUTH_TOKEN:-dummy-channel-token}"
+export JARVIS_CHANNEL_CONNECT_TIMEOUT_MS="${JARVIS_CHANNEL_CONNECT_TIMEOUT_MS:-10000}"
+export JARVIS_CHANNEL_READ_TIMEOUT_MS="${JARVIS_CHANNEL_READ_TIMEOUT_MS:-60000}"
+export JARVIS_CHANNEL_HOSTNAME_VERIFICATION="${JARVIS_CHANNEL_HOSTNAME_VERIFICATION:-false}"
+export JARVIS_CHANNEL_CA_CERT_PATH="${JARVIS_CHANNEL_CA_CERT_PATH:-}"
+
+export JARVIS_XFYUN_IAT_APP_ID="${JARVIS_XFYUN_IAT_APP_ID:-}"
+export JARVIS_XFYUN_IAT_API_KEY="${JARVIS_XFYUN_IAT_API_KEY:-}"
+export JARVIS_XFYUN_IAT_API_SECRET="${JARVIS_XFYUN_IAT_API_SECRET:-}"
+export JARVIS_XFYUN_IAT_HOST="${JARVIS_XFYUN_IAT_HOST:-iat.cn-huabei-1.xf-yun.com}"
+export JARVIS_XFYUN_IAT_PATH="${JARVIS_XFYUN_IAT_PATH:-/v1}"
+export JARVIS_XFYUN_IAT_TTL_SEC="${JARVIS_XFYUN_IAT_TTL_SEC:-120}"
+export JARVIS_XFYUN_IAT_RATE_LIMIT_PER_MIN="${JARVIS_XFYUN_IAT_RATE_LIMIT_PER_MIN:-30}"
+export JARVIS_XFYUN_IAT_DEFAULT_SAMPLE_RATE="${JARVIS_XFYUN_IAT_DEFAULT_SAMPLE_RATE:-16000}"
+export JARVIS_XFYUN_IAT_DEFAULT_DOMAIN="${JARVIS_XFYUN_IAT_DEFAULT_DOMAIN:-slm}"
+export JARVIS_XFYUN_IAT_DEFAULT_LANGUAGE="${JARVIS_XFYUN_IAT_DEFAULT_LANGUAGE:-zh_cn}"
+export JARVIS_XFYUN_IAT_DEFAULT_ACCENT="${JARVIS_XFYUN_IAT_DEFAULT_ACCENT:-mulacc}"
+export JARVIS_XFYUN_IAT_AUDIO_ENCODING="${JARVIS_XFYUN_IAT_AUDIO_ENCODING:-lame}"
+
+export NGINX_LISTEN_PORT="${NGINX_LISTEN_PORT:-443}"
+export NGINX_SERVER_NAME="${NGINX_SERVER_NAME:-_}"
+export NGINX_TLS_CERT_PATH="${NGINX_TLS_CERT_PATH:-/etc/nginx/tls/server.crt}"
+export NGINX_TLS_KEY_PATH="${NGINX_TLS_KEY_PATH:-/etc/nginx/tls/server.key}"
+
+if [[ ! -f "${NGINX_TLS_CERT_PATH}" ]]; then
+  echo "[entrypoint] Missing TLS cert: ${NGINX_TLS_CERT_PATH}" >&2
+  exit 1
+fi
+if [[ ! -f "${NGINX_TLS_KEY_PATH}" ]]; then
+  echo "[entrypoint] Missing TLS key: ${NGINX_TLS_KEY_PATH}" >&2
+  exit 1
+fi
+
+envsubst '${NGINX_LISTEN_PORT} ${NGINX_SERVER_NAME} ${NGINX_TLS_CERT_PATH} ${NGINX_TLS_KEY_PATH} ${JARVIS_SERVER_PORT}' \
+  </etc/nginx/templates/jarvis.conf.template \
+  >/etc/nginx/conf.d/jarvis.conf
+
+/opt/jarvis/bin/server > /var/log/jarvis/server.log 2>&1 &
+SERVER_PID=$!
+
+nginx -g 'daemon off;' &
+NGINX_PID=$!
+
+terminate() {
+  kill "${SERVER_PID}" >/dev/null 2>&1 || true
+  kill "${NGINX_PID}" >/dev/null 2>&1 || true
+}
+
+trap terminate TERM INT
+
+wait -n "${SERVER_PID}" "${NGINX_PID}"
+terminate
+wait || true

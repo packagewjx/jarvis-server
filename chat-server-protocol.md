@@ -55,6 +55,7 @@ Success response example:
     "expireAt": 1775366400000,
     "ttlSec": 120,
     "config": {
+      "appId": "64ff2388",
       "sampleRate": 16000,
       "domain": "slm",
       "language": "zh_cn",

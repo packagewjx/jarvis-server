@@ -1,0 +1,12 @@
+.git
+.gitignore
+.gradle
+.logs
+.run
+.certs
+build
+openclaw-channel/node_modules
+openclaw-channel/dist
+server/build
+scripts/deploy.local.env
+scripts/deploy.docker.env

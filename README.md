@@ -26,6 +26,7 @@ This repository contains a two-module bridge between a chat client and OpenClaw:
 - `JARVIS_SERVER_PORT` default `8080`
 - `JARVIS_SERVER_AUTH_TOKEN` default `dev-client-token`
 - `JARVIS_SERVER_USER_ID` default `dev-user`
+- `JARVIS_XFYUN_IAT_APP_ID` optional; required to run actual IAT recognition request frames
 - `JARVIS_XFYUN_IAT_API_KEY` optional; required to enable `GET /api/voice/iat-sign-url`
 - `JARVIS_XFYUN_IAT_API_SECRET` optional; required to enable `GET /api/voice/iat-sign-url`
 - `JARVIS_XFYUN_IAT_HOST` default `iat.cn-huabei-1.xf-yun.com`
@@ -128,6 +129,7 @@ Optional query parameters:
 - `accent` (default `mulacc`)
 
 Success response includes `data.wsUrl`, `expireAt`, `ttlSec`, and the effective session config.
+`data.config.appId` is returned for client request-frame `header.app_id`.
 
 By default the script runs OpenClaw CLI via `npx openclaw` inside `openclaw-channel/`.
 If you want to use your system-installed OpenClaw binary, set:
@@ -137,6 +139,77 @@ USE_SYSTEM_OPENCLAW=true
 ```
 
 in `scripts/deploy.local.env`.
+
+### Docker daemon mirror (China mainland)
+
+If your Docker daemon is managed by systemd (Linux), configure mirrors in:
+
+`/etc/docker/daemon.json`
+
+Example:
+
+```json
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://dockerproxy.com",
+    "https://dockerhub.timeweb.cloud"
+  ]
+}
+```
+
+Then restart Docker daemon (`sudo systemctl restart docker`) and verify with:
+
+```bash
+docker info | rg -n "Registry Mirrors" -A 5
+```
+
+### Docker image deploy (server + nginx in one container)
+
+This repo includes a single-image deployment path:
+
+- Kotlin `server` process
+- Nginx TLS termination (HTTPS)
+
+Files:
+
+- `Dockerfile`
+- `docker/entrypoint.sh`
+- `docker/nginx.conf.template`
+- `scripts/deploy-docker.sh`
+- `scripts/deploy.docker.env.example`
+
+Setup:
+
+```bash
+cp scripts/deploy.docker.env.example scripts/deploy.docker.env
+# edit scripts/deploy.docker.env
+chmod +x scripts/deploy-docker.sh
+```
+
+Required envs for `start` in `deploy.docker.env`:
+
+- `TLS_CERT_PATH` (host path to cert pem/crt)
+- `TLS_KEY_PATH` (host path to key pem)
+
+Commands:
+
+```bash
+./scripts/deploy-docker.sh build scripts/deploy.docker.env
+./scripts/deploy-docker.sh start scripts/deploy.docker.env
+./scripts/deploy-docker.sh stop scripts/deploy.docker.env
+```
+
+Optional:
+
+```bash
+./scripts/deploy-docker.sh status scripts/deploy.docker.env
+./scripts/deploy-docker.sh logs scripts/deploy.docker.env
+```
+
+After `start`, HTTPS endpoint is:
+
+`https://127.0.0.1:${HOST_HTTPS_PORT}/health`
 
 ## Notes
 

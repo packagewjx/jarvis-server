@@ -28,6 +28,7 @@ data class IatSignUrlResponseData(
 
 @Serializable
 data class IatSessionConfig(
+    val appId: String,
     val sampleRate: Int,
     val domain: String,
     val language: String,

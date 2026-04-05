@@ -10,6 +10,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Base64
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -29,6 +30,11 @@ class IatSignUrlService(
         languageRaw: String?,
         accentRaw: String?,
     ): IatSignResult {
+        val appId = config.appId ?: return errorResult(
+            code = 50002,
+            message = "IAT_CONFIG_MISSING",
+            detail = "missing env JARVIS_XFYUN_IAT_APP_ID",
+        )
         val apiKey = config.apiKey ?: return errorResult(
             code = 50002,
             message = "IAT_CONFIG_MISSING",
@@ -72,7 +78,7 @@ class IatSignUrlService(
 
             val signature = base64HmacSha256(signatureOrigin, apiSecret)
             val authorizationOrigin =
-                "api_key=\"$apiKey\",algorithm=\"hmac-sha256\",headers=\"host date request-line\",signature=\"$signature\""
+                "api_key=\"$apiKey\", algorithm=\"hmac-sha256\", headers=\"host date request-line\", signature=\"$signature\""
             val authorization = Base64.getEncoder()
                 .encodeToString(authorizationOrigin.toByteArray(StandardCharsets.UTF_8))
 
@@ -94,6 +100,7 @@ class IatSignUrlService(
                 expireAt = now.toEpochMilli() + ttlSec * 1000,
                 ttlSec = ttlSec,
                 config = IatSessionConfig(
+                    appId = appId,
                     sampleRate = params.sampleRate,
                     domain = params.domain,
                     language = params.language,
@@ -168,7 +175,8 @@ class IatSignUrlService(
 
     companion object {
         private val RFC_1123_GMT: DateTimeFormatter =
-            DateTimeFormatter.RFC_1123_DATE_TIME.withZone(ZoneOffset.UTC)
+            DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US)
+                .withZone(ZoneOffset.UTC)
     }
 }
 

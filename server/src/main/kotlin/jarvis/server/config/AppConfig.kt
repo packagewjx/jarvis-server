@@ -31,6 +31,7 @@ data class AppConfig(
 }
 
 data class XfyunIatConfig(
+    val appId: String?,
     val apiKey: String?,
     val apiSecret: String?,
     val host: String,
@@ -46,6 +47,7 @@ data class XfyunIatConfig(
     companion object {
         fun fromEnvironment(): XfyunIatConfig {
             return XfyunIatConfig(
+                appId = optionalEnv("JARVIS_XFYUN_IAT_APP_ID"),
                 apiKey = optionalEnv("JARVIS_XFYUN_IAT_API_KEY"),
                 apiSecret = optionalEnv("JARVIS_XFYUN_IAT_API_SECRET"),
                 host = env("JARVIS_XFYUN_IAT_HOST", "iat.cn-huabei-1.xf-yun.com"),
