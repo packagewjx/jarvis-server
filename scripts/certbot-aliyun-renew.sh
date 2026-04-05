@@ -7,7 +7,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SELF_PATH="${SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")"
 
 ACTION="${1:-run}"
-CONFIG_PATH="${2:-${REPO_ROOT}/scripts/certbot.aliyun.env}"
+CONFIG_PATH_INPUT="${2:-}"
+CONFIG_PATH=""
 
 log() {
   echo "[certbot-aliyun] $*"
@@ -36,9 +37,38 @@ resolve_path() {
   fi
 }
 
+pick_default_config_path() {
+  local repo_config="${REPO_ROOT}/scripts/certbot.aliyun.env"
+  local system_config="/etc/jarvis/certbot.aliyun.env"
+  local user_config="${HOME}/.config/jarvis/certbot.aliyun.env"
+
+  if [[ -n "${JARVIS_CERTBOT_CONFIG_PATH:-}" ]]; then
+    echo "${JARVIS_CERTBOT_CONFIG_PATH}"
+    return
+  fi
+
+  if [[ -f "${system_config}" ]]; then
+    echo "${system_config}"
+    return
+  fi
+
+  if [[ -f "${user_config}" ]]; then
+    echo "${user_config}"
+    return
+  fi
+
+  echo "${repo_config}"
+}
+
 load_config() {
+  if [[ -n "${CONFIG_PATH_INPUT}" ]]; then
+    CONFIG_PATH="${CONFIG_PATH_INPUT}"
+  else
+    CONFIG_PATH="$(pick_default_config_path)"
+  fi
+
   if [[ ! -f "${CONFIG_PATH}" ]]; then
-    fail "Missing config file: ${CONFIG_PATH}. Copy scripts/certbot.aliyun.env.example first."
+    fail "Missing config file: ${CONFIG_PATH}. Create it from scripts/certbot.aliyun.env.example."
   fi
 
   # shellcheck disable=SC1090
