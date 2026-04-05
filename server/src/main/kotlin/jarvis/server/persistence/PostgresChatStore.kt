@@ -25,8 +25,9 @@ class PostgresChatStore(
         dataSource.connection.use { connection ->
             connection.prepareStatement(
                 """
-                INSERT INTO app_users (user_id, username, password_hash, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO app_users (
+                    user_id, username, password_hash, email, phone, email_verified, phone_verified, created_at, updated_at
+                ) VALUES (?, ?, ?, NULL, NULL, FALSE, FALSE, ?, ?)
                 ON CONFLICT (username) DO NOTHING
                 """.trimIndent(),
             ).use { statement ->
@@ -71,11 +72,37 @@ class PostgresChatStore(
         }
     }
 
+    override suspend fun findUserCredentialByUserId(userId: String): UserCredential? = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT user_id, username, password_hash
+                FROM app_users
+                WHERE user_id = ?
+                LIMIT 1
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, userId)
+                statement.executeQuery().use { rs ->
+                    if (!rs.next()) {
+                        null
+                    } else {
+                        UserCredential(
+                            userId = rs.getString("user_id"),
+                            username = rs.getString("username"),
+                            passwordHash = rs.getString("password_hash"),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     override suspend fun findUserProfile(userId: String): UserProfile? = withContext(Dispatchers.IO) {
         dataSource.connection.use { connection ->
             connection.prepareStatement(
                 """
-                SELECT user_id, username
+                SELECT user_id, username, email, phone, email_verified, phone_verified
                 FROM app_users
                 WHERE user_id = ?
                 LIMIT 1
@@ -89,12 +116,432 @@ class PostgresChatStore(
                         UserProfile(
                             userId = rs.getString("user_id"),
                             username = rs.getString("username"),
+                            email = rs.getString("email"),
+                            phone = rs.getString("phone"),
+                            emailVerified = rs.getBoolean("email_verified"),
+                            phoneVerified = rs.getBoolean("phone_verified"),
                         )
                     }
                 }
             }
         }
     }
+
+    override suspend fun updateUserPassword(userId: String, passwordHash: String, updatedAt: Long): Boolean =
+        withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    """
+                    UPDATE app_users
+                    SET password_hash = ?, updated_at = ?
+                    WHERE user_id = ?
+                    """.trimIndent(),
+                ).use { statement ->
+                    statement.setString(1, passwordHash)
+                    statement.setLong(2, updatedAt)
+                    statement.setString(3, userId)
+                    statement.executeUpdate() > 0
+                }
+            }
+        }
+
+    override suspend fun createSession(
+        userId: String,
+        refreshTokenHash: String,
+        refreshExpiresAt: Long,
+        userAgent: String?,
+        ip: String?,
+    ): UserSession = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val sessionId = "s_${UUID.randomUUID().toString().replace("-", "")}"
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                INSERT INTO auth_sessions (
+                    session_id, user_id, refresh_token_hash, created_at, updated_at, expires_at, revoked_at, user_agent, ip
+                ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, sessionId)
+                statement.setString(2, userId)
+                statement.setString(3, refreshTokenHash)
+                statement.setLong(4, now)
+                statement.setLong(5, now)
+                statement.setLong(6, refreshExpiresAt)
+                statement.setString(7, userAgent)
+                statement.setString(8, ip)
+                statement.executeUpdate()
+            }
+        }
+        UserSession(
+            sessionId = sessionId,
+            userId = userId,
+            createdAt = now,
+            updatedAt = now,
+            expiresAt = refreshExpiresAt,
+            revokedAt = null,
+            userAgent = userAgent,
+            ip = ip,
+        )
+    }
+
+    override suspend fun rotateSessionRefresh(
+        sessionId: String,
+        refreshTokenHash: String,
+        refreshExpiresAt: Long,
+        updatedAt: Long,
+    ): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                UPDATE auth_sessions
+                SET refresh_token_hash = ?, expires_at = ?, updated_at = ?
+                WHERE session_id = ? AND revoked_at IS NULL
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, refreshTokenHash)
+                statement.setLong(2, refreshExpiresAt)
+                statement.setLong(3, updatedAt)
+                statement.setString(4, sessionId)
+                statement.executeUpdate() > 0
+            }
+        }
+    }
+
+    override suspend fun findSession(sessionId: String): UserSession? = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT session_id, user_id, created_at, updated_at, expires_at, revoked_at, user_agent, ip
+                FROM auth_sessions
+                WHERE session_id = ?
+                LIMIT 1
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, sessionId)
+                statement.executeQuery().use { rs ->
+                    if (!rs.next()) {
+                        null
+                    } else {
+                        UserSession(
+                            sessionId = rs.getString("session_id"),
+                            userId = rs.getString("user_id"),
+                            createdAt = rs.getLong("created_at"),
+                            updatedAt = rs.getLong("updated_at"),
+                            expiresAt = rs.getLong("expires_at"),
+                            revokedAt = rs.getLong("revoked_at").let { if (rs.wasNull()) null else it },
+                            userAgent = rs.getString("user_agent"),
+                            ip = rs.getString("ip"),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    override suspend fun getSessionRefreshTokenHash(sessionId: String): String? = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT refresh_token_hash
+                FROM auth_sessions
+                WHERE session_id = ?
+                LIMIT 1
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, sessionId)
+                statement.executeQuery().use { rs ->
+                    if (!rs.next()) null else rs.getString("refresh_token_hash")
+                }
+            }
+        }
+    }
+
+    override suspend fun listSessions(userId: String): List<UserSession> = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT session_id, user_id, created_at, updated_at, expires_at, revoked_at, user_agent, ip
+                FROM auth_sessions
+                WHERE user_id = ?
+                ORDER BY updated_at DESC
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, userId)
+                statement.executeQuery().use { rs ->
+                    val sessions = mutableListOf<UserSession>()
+                    while (rs.next()) {
+                        sessions += UserSession(
+                            sessionId = rs.getString("session_id"),
+                            userId = rs.getString("user_id"),
+                            createdAt = rs.getLong("created_at"),
+                            updatedAt = rs.getLong("updated_at"),
+                            expiresAt = rs.getLong("expires_at"),
+                            revokedAt = rs.getLong("revoked_at").let { if (rs.wasNull()) null else it },
+                            userAgent = rs.getString("user_agent"),
+                            ip = rs.getString("ip"),
+                        )
+                    }
+                    sessions
+                }
+            }
+        }
+    }
+
+    override suspend fun revokeSession(sessionId: String, revokedAt: Long): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                UPDATE auth_sessions
+                SET revoked_at = COALESCE(revoked_at, ?), updated_at = ?
+                WHERE session_id = ?
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setLong(1, revokedAt)
+                statement.setLong(2, revokedAt)
+                statement.setString(3, sessionId)
+                statement.executeUpdate() > 0
+            }
+        }
+    }
+
+    override suspend fun revokeAllSessions(userId: String, revokedAt: Long, exceptSessionId: String?): Int =
+        withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                val sql = if (exceptSessionId.isNullOrBlank()) {
+                    """
+                    UPDATE auth_sessions
+                    SET revoked_at = COALESCE(revoked_at, ?), updated_at = ?
+                    WHERE user_id = ? AND revoked_at IS NULL
+                    """.trimIndent()
+                } else {
+                    """
+                    UPDATE auth_sessions
+                    SET revoked_at = COALESCE(revoked_at, ?), updated_at = ?
+                    WHERE user_id = ? AND revoked_at IS NULL AND session_id <> ?
+                    """.trimIndent()
+                }
+                connection.prepareStatement(sql).use { statement ->
+                    statement.setLong(1, revokedAt)
+                    statement.setLong(2, revokedAt)
+                    statement.setString(3, userId)
+                    if (!exceptSessionId.isNullOrBlank()) {
+                        statement.setString(4, exceptSessionId)
+                    }
+                    statement.executeUpdate()
+                }
+            }
+        }
+
+    override suspend fun saveRevokedToken(jti: String, expiresAt: Long) {
+        withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    """
+                    INSERT INTO auth_revoked_tokens (jti, expires_at, created_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT (jti) DO NOTHING
+                    """.trimIndent(),
+                ).use { statement ->
+                    statement.setString(1, jti)
+                    statement.setLong(2, expiresAt)
+                    statement.setLong(3, System.currentTimeMillis())
+                    statement.executeUpdate()
+                }
+            }
+        }
+    }
+
+    override suspend fun isTokenRevoked(jti: String): Boolean = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT 1
+                FROM auth_revoked_tokens
+                WHERE jti = ? AND expires_at > ?
+                LIMIT 1
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, jti)
+                statement.setLong(2, System.currentTimeMillis())
+                statement.executeQuery().use { rs -> rs.next() }
+            }
+        }
+    }
+
+    override suspend fun createPasswordResetToken(userId: String, tokenHash: String, expiresAt: Long, createdAt: Long) {
+        withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    """
+                    INSERT INTO auth_password_reset_tokens (token_hash, user_id, expires_at, created_at, used_at)
+                    VALUES (?, ?, ?, ?, NULL)
+                    ON CONFLICT (token_hash) DO NOTHING
+                    """.trimIndent(),
+                ).use { statement ->
+                    statement.setString(1, tokenHash)
+                    statement.setString(2, userId)
+                    statement.setLong(3, expiresAt)
+                    statement.setLong(4, createdAt)
+                    statement.executeUpdate()
+                }
+            }
+        }
+    }
+
+    override suspend fun consumePasswordResetToken(tokenHash: String, now: Long): String? = withContext(Dispatchers.IO) {
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                val userId = connection.prepareStatement(
+                    """
+                    SELECT user_id
+                    FROM auth_password_reset_tokens
+                    WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?
+                    LIMIT 1
+                    FOR UPDATE
+                    """.trimIndent(),
+                ).use { statement ->
+                    statement.setString(1, tokenHash)
+                    statement.setLong(2, now)
+                    statement.executeQuery().use { rs ->
+                        if (!rs.next()) null else rs.getString("user_id")
+                    }
+                } ?: run {
+                    connection.rollback()
+                    return@withContext null
+                }
+                connection.prepareStatement(
+                    """
+                    UPDATE auth_password_reset_tokens
+                    SET used_at = ?
+                    WHERE token_hash = ?
+                    """.trimIndent(),
+                ).use { statement ->
+                    statement.setLong(1, now)
+                    statement.setString(2, tokenHash)
+                    statement.executeUpdate()
+                }
+                connection.commit()
+                userId
+            } catch (ex: Exception) {
+                connection.rollback()
+                throw ex
+            }
+        }
+    }
+
+    override suspend fun createVerificationChallenge(
+        userId: String,
+        channel: String,
+        target: String,
+        codeHash: String,
+        expiresAt: Long,
+        createdAt: Long,
+    ): VerificationChallenge = withContext(Dispatchers.IO) {
+        val challengeId = "vc_${UUID.randomUUID().toString().replace("-", "")}"
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                INSERT INTO auth_verification_challenges (
+                    challenge_id, user_id, channel, target, code_hash, expires_at, created_at, used_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, challengeId)
+                statement.setString(2, userId)
+                statement.setString(3, channel)
+                statement.setString(4, target)
+                statement.setString(5, codeHash)
+                statement.setLong(6, expiresAt)
+                statement.setLong(7, createdAt)
+                statement.executeUpdate()
+            }
+        }
+        VerificationChallenge(
+            challengeId = challengeId,
+            userId = userId,
+            channel = channel,
+            target = target,
+            expiresAt = expiresAt,
+        )
+    }
+
+    override suspend fun consumeVerificationChallenge(challengeId: String, codeHash: String, now: Long): VerificationChallenge? =
+        withContext(Dispatchers.IO) {
+            dataSource.connection.use { connection ->
+                connection.autoCommit = false
+                try {
+                    val challenge = connection.prepareStatement(
+                        """
+                        SELECT challenge_id, user_id, channel, target, expires_at
+                        FROM auth_verification_challenges
+                        WHERE challenge_id = ? AND code_hash = ? AND used_at IS NULL AND expires_at > ?
+                        LIMIT 1
+                        FOR UPDATE
+                        """.trimIndent(),
+                    ).use { statement ->
+                        statement.setString(1, challengeId)
+                        statement.setString(2, codeHash)
+                        statement.setLong(3, now)
+                        statement.executeQuery().use { rs ->
+                            if (!rs.next()) {
+                                null
+                            } else {
+                                VerificationChallenge(
+                                    challengeId = rs.getString("challenge_id"),
+                                    userId = rs.getString("user_id"),
+                                    channel = rs.getString("channel"),
+                                    target = rs.getString("target"),
+                                    expiresAt = rs.getLong("expires_at"),
+                                )
+                            }
+                        }
+                    } ?: run {
+                        connection.rollback()
+                        return@withContext null
+                    }
+                    connection.prepareStatement(
+                        """
+                        UPDATE auth_verification_challenges
+                        SET used_at = ?
+                        WHERE challenge_id = ?
+                        """.trimIndent(),
+                    ).use { statement ->
+                        statement.setLong(1, now)
+                        statement.setString(2, challengeId)
+                        statement.executeUpdate()
+                    }
+                    connection.commit()
+                    challenge
+                } catch (ex: Exception) {
+                    connection.rollback()
+                    throw ex
+                }
+            }
+        }
+
+    override suspend fun markUserVerified(userId: String, channel: String, target: String, updatedAt: Long): Boolean =
+        withContext(Dispatchers.IO) {
+            val (field, verifyField) = when (channel.lowercase()) {
+                "email" -> "email" to "email_verified"
+                "phone" -> "phone" to "phone_verified"
+                else -> return@withContext false
+            }
+            val sql = """
+                UPDATE app_users
+                SET $field = ?, $verifyField = TRUE, updated_at = ?
+                WHERE user_id = ?
+            """.trimIndent()
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(sql).use { statement ->
+                    statement.setString(1, target)
+                    statement.setLong(2, updatedAt)
+                    statement.setString(3, userId)
+                    statement.executeUpdate() > 0
+                }
+            }
+        }
 
     override suspend fun joinGroupByInvite(userId: String, joinCode: String): GroupMembership? = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()

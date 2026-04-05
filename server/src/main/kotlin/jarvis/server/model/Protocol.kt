@@ -123,7 +123,100 @@ data class AuthTokenResponse(
     @SerialName("access_token") val accessToken: String,
     @SerialName("refresh_token") val refreshToken: String,
     @SerialName("expires_in") val expiresIn: Long,
+    @SerialName("expires_at") val expiresAt: Long,
+    @SerialName("token_type") val tokenType: String = "Bearer",
+    @SerialName("session_id") val sessionId: String,
     val user: AuthUserPayload? = null,
+)
+
+@Serializable
+data class AuthLogoutRequest(
+    @SerialName("refresh_token") val refreshToken: String? = null,
+    @SerialName("all_devices") val allDevices: Boolean = false,
+)
+
+@Serializable
+data class AuthRevokeRequest(
+    @SerialName("session_id") val sessionId: String? = null,
+    @SerialName("all_devices") val allDevices: Boolean = false,
+)
+
+@Serializable
+data class GenericSuccessResponse(
+    val success: Boolean = true,
+)
+
+@Serializable
+data class UserMeResponse(
+    val user: UserProfilePayload,
+)
+
+@Serializable
+data class UserProfilePayload(
+    @SerialName("user_id") val userId: String,
+    val username: String,
+    val email: String? = null,
+    val phone: String? = null,
+    @SerialName("email_verified") val emailVerified: Boolean = false,
+    @SerialName("phone_verified") val phoneVerified: Boolean = false,
+)
+
+@Serializable
+data class UserSessionPayload(
+    @SerialName("session_id") val sessionId: String,
+    @SerialName("created_at") val createdAt: Long,
+    @SerialName("updated_at") val updatedAt: Long,
+    @SerialName("expires_at") val expiresAt: Long,
+    @SerialName("revoked_at") val revokedAt: Long? = null,
+    @SerialName("user_agent") val userAgent: String? = null,
+    val ip: String? = null,
+)
+
+@Serializable
+data class UserSessionListResponse(
+    val items: List<UserSessionPayload>,
+)
+
+@Serializable
+data class PasswordChangeRequest(
+    @SerialName("old_password") val oldPassword: String,
+    @SerialName("new_password") val newPassword: String,
+)
+
+@Serializable
+data class PasswordForgotRequest(
+    val username: String,
+)
+
+@Serializable
+data class PasswordForgotResponse(
+    @SerialName("reset_token") val resetToken: String,
+    @SerialName("expires_in") val expiresIn: Long,
+)
+
+@Serializable
+data class PasswordResetRequest(
+    @SerialName("reset_token") val resetToken: String,
+    @SerialName("new_password") val newPassword: String,
+)
+
+@Serializable
+data class VerifySendRequest(
+    val channel: String,
+    val target: String,
+)
+
+@Serializable
+data class VerifySendResponse(
+    @SerialName("challenge_id") val challengeId: String,
+    @SerialName("expires_in") val expiresIn: Long,
+    @SerialName("dev_code") val devCode: String? = null,
+)
+
+@Serializable
+data class VerifyConfirmRequest(
+    @SerialName("challenge_id") val challengeId: String,
+    val code: String,
 )
 
 @Serializable
