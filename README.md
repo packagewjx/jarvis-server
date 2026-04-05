@@ -206,13 +206,14 @@ Then restart Docker daemon (`sudo systemctl restart docker`) and verify with:
 docker info | rg -n "Registry Mirrors" -A 5
 ```
 
-### Docker deploy (server + nginx + PostgreSQL)
+### Docker deploy (server + nginx + PostgreSQL + OpenClaw bridge)
 
 This repo includes a container deployment path:
 
 - Kotlin `server` process (app container)
 - Nginx TLS termination (inside app container)
 - PostgreSQL container for message persistence
+- OpenClaw bridge container (`jarvis-openclaw-bridge`) for real model responses
 
 Files:
 
@@ -236,6 +237,7 @@ Required envs for `start` in `deploy.docker.env`:
 - `TLS_KEY_PATH` (host path to key pem)
 - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
 - `JARVIS_DB_JDBC_URL`, `JARVIS_DB_USER`, `JARVIS_DB_PASSWORD`
+- `OPENCLAW_BRIDGE_OPENCLAW_CONFIG_PATH` (defaults to `~/.openclaw/openclaw.json`, used to generate bridge-only minimal model config)
 
 Commands:
 
@@ -261,6 +263,13 @@ Database container defaults:
 - Image: `postgres:16-alpine`
 - Port mapping: `${POSTGRES_HOST_PORT}:5432`
 - Data volume: `${POSTGRES_VOLUME}`
+
+OpenClaw bridge defaults:
+
+- Container: `jarvis-openclaw-bridge`
+- Image: `node:24-bookworm`
+- Generated config: `${REPO_ROOT}/.run/openclaw-bridge.json` (from `OPENCLAW_BRIDGE_OPENCLAW_CONFIG_PATH`)
+- Command allowlist: `help,status,new,reset,think,verbose`
 
 ## Notes
 
