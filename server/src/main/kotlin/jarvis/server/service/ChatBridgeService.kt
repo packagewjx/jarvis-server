@@ -4,7 +4,6 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.websocket.WebSocketServerSession
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
-import jarvis.server.config.AppConfig
 import jarvis.server.gateway.ChannelGateway
 import jarvis.server.model.AckPayload
 import jarvis.server.model.AudioChunkPayload
@@ -19,6 +18,9 @@ import jarvis.server.model.MessageSendPayload
 import jarvis.server.model.ReplaceCardPayload
 import jarvis.server.model.RolePayload
 import jarvis.server.model.WelcomePayload
+import jarvis.server.persistence.ChatEventsPage
+import jarvis.server.persistence.ChatStore
+import jarvis.server.persistence.InMemoryChatStore
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.collect
@@ -29,27 +31,25 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 class ChatBridgeService(
-    private val config: AppConfig,
     private val channelGateway: ChannelGateway,
+    private val chatStore: ChatStore = InMemoryChatStore(),
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
 ) {
     private val logger = KotlinLogging.logger {}
     private val runs = ConcurrentHashMap<String, CachedRun>()
 
-    fun isAuthorized(header: String?): Boolean = header == "Bearer ${config.authToken}"
-
-    suspend fun handleSession(session: WebSocketServerSession) = supervisorScope {
+    suspend fun handleSession(session: WebSocketServerSession, userId: String) = supervisorScope {
         session.sendEnvelope(
             ChatEnvelope(
                 event = "session.welcome",
                 traceId = nextTraceId("welcome"),
-                conversationId = "",
+                groupId = "",
                 timestamp = now(),
                 payload = json.encodeToJsonElement(
                     WelcomePayload.serializer(),
-                    WelcomePayload(config.userId, now()),
+                    WelcomePayload(userId, now()),
                 ),
-            )
+            ),
         )
 
         for (frame in session.incoming) {
@@ -61,9 +61,9 @@ class ChatBridgeService(
                 val envelope = json.decodeFromString<ChatEnvelope>(frame.readText())
                 when (envelope.event) {
                     "ping" -> handlePing(session, envelope)
-                    "message.send" -> launch { handleMessageSend(session, envelope) }
+                    "message.send" -> launch { handleMessageSend(session, envelope, userId) }
                     else -> session.sendError(
-                        conversationId = envelope.conversationId,
+                        groupId = envelope.groupId,
                         messageId = envelope.messageId,
                         clientMessageId = envelope.clientMessageId,
                         traceId = envelope.traceId,
@@ -73,7 +73,7 @@ class ChatBridgeService(
                 }
             } catch (ex: SerializationException) {
                 session.sendError(
-                    conversationId = "",
+                    groupId = "",
                     messageId = "",
                     clientMessageId = "",
                     traceId = nextTraceId("decode"),
@@ -83,7 +83,7 @@ class ChatBridgeService(
             } catch (ex: Exception) {
                 logger.error(ex) { "Unexpected websocket failure" }
                 session.sendError(
-                    conversationId = "",
+                    groupId = "",
                     messageId = "",
                     clientMessageId = "",
                     traceId = nextTraceId("internal"),
@@ -94,24 +94,87 @@ class ChatBridgeService(
         }
     }
 
+    suspend fun syncGroupEvents(
+        userId: String,
+        groupId: String,
+        afterEventId: Long,
+        limit: Int,
+    ): ChatEventsPage {
+        return chatStore.listGroupEvents(
+            userId = userId,
+            groupId = groupId,
+            afterEventId = afterEventId,
+            limit = limit,
+        )
+    }
+
+    suspend fun isUserInGroup(userId: String, groupId: String): Boolean {
+        return chatStore.isUserInGroup(userId, groupId)
+    }
+
     private suspend fun handlePing(session: WebSocketServerSession, envelope: ChatEnvelope) {
         session.sendEnvelope(
             envelope.copy(
                 event = "pong",
                 timestamp = now(),
                 payload = null,
-            )
+            ),
         )
     }
 
-    private suspend fun handleMessageSend(session: WebSocketServerSession, envelope: ChatEnvelope) {
+    private suspend fun handleMessageSend(session: WebSocketServerSession, envelope: ChatEnvelope, userId: String) {
+        if (envelope.groupId.isBlank()) {
+            session.sendError(
+                groupId = envelope.groupId,
+                messageId = envelope.messageId,
+                clientMessageId = envelope.clientMessageId,
+                traceId = envelope.traceId.ifBlank { nextTraceId("send") },
+                code = "INVALID_GROUP_ID",
+                message = "group_id is required",
+            )
+            return
+        }
+        if (envelope.clientMessageId.isBlank()) {
+            session.sendError(
+                groupId = envelope.groupId,
+                messageId = envelope.messageId,
+                clientMessageId = envelope.clientMessageId,
+                traceId = envelope.traceId.ifBlank { nextTraceId("send") },
+                code = "INVALID_CLIENT_MESSAGE_ID",
+                message = "client_message_id is required",
+            )
+            return
+        }
+        if (!chatStore.isUserInGroup(userId, envelope.groupId)) {
+            session.sendError(
+                groupId = envelope.groupId,
+                messageId = envelope.messageId,
+                clientMessageId = envelope.clientMessageId,
+                traceId = envelope.traceId.ifBlank { nextTraceId("send") },
+                code = "FORBIDDEN_GROUP",
+                message = "User is not a member of group ${envelope.groupId}",
+            )
+            return
+        }
+
         val payload = json.decodeFromJsonElement(
             MessageSendPayload.serializer(),
             requireNotNull(envelope.payload),
         )
-        val runKey = runKey(envelope.conversationId, envelope.clientMessageId)
+
+        val runKey = runKey(userId, envelope.groupId, envelope.clientMessageId)
         runs[runKey]?.let {
             replayCachedRun(session, it)
+            return
+        }
+
+        val storedEvents = chatStore.findRunEvents(
+            userId = userId,
+            groupId = envelope.groupId,
+            clientMessageId = envelope.clientMessageId,
+        )
+        if (storedEvents.isNotEmpty()) {
+            storedEvents.forEach { session.sendEnvelope(it) }
             return
         }
 
@@ -129,32 +192,41 @@ class ChatBridgeService(
         }
 
         try {
+            chatStore.saveIncomingUserMessage(
+                userId = userId,
+                envelope = envelope,
+                userMessageId = userMessageId,
+                payload = payload,
+            )
+
             val request = ChannelSendRequest(
                 requestId = run.requestId,
-                conversationId = envelope.conversationId,
+                conversationId = envelope.groupId,
                 clientMessageId = envelope.clientMessageId,
                 assistantMessageId = assistantMessageId,
                 traceId = envelope.traceId.ifBlank { nextTraceId("send") },
-                userId = config.userId,
+                userId = userId,
                 payload = payload,
             )
 
             run.requestId = channelGateway.submit(request)
 
-            cacheAndSend(
-                session,
-                run,
-                envelope.serverEvent(
+            persistAndSend(
+                session = session,
+                run = run,
+                userId = userId,
+                envelope = envelope.serverEvent(
                     event = "message.ack",
                     messageId = userMessageId,
                     payload = AckPayload(true),
                 ),
             )
 
-            cacheAndSend(
-                session,
-                run,
-                envelope.serverEvent(
+            persistAndSend(
+                session = session,
+                run = run,
+                userId = userId,
+                envelope = envelope.serverEvent(
                     event = "message.start",
                     messageId = assistantMessageId,
                     payload = RolePayload("assistant"),
@@ -163,20 +235,31 @@ class ChatBridgeService(
             run.assistantStarted = true
 
             channelGateway.streamEvents(run.requestId).collect { event ->
-                forwardChannelEvent(session, envelope, run, event)
+                forwardChannelEvent(session, envelope, run, event, userId)
             }
         } catch (ex: Exception) {
             logger.error(ex) { "Failed to bridge message.send" }
-            cacheAndSend(
-                session,
-                run,
-                envelope.serverEvent(
-                    event = "message.error",
-                    messageId = run.errorMessageId(),
-                    payload = ErrorPayload("CHANNEL_BRIDGE_FAILED", ex.message ?: "Bridge request failed"),
-                ),
+            val errorEnvelope = envelope.serverEvent(
+                event = "message.error",
+                messageId = run.errorMessageId(),
+                payload = ErrorPayload("CHANNEL_BRIDGE_FAILED", ex.message ?: "Bridge request failed"),
             )
+            runCatching {
+                persistAndSend(
+                    session = session,
+                    run = run,
+                    userId = userId,
+                    envelope = errorEnvelope,
+                )
+            }.getOrElse {
+                logger.error(it) { "Failed to persist error event; falling back to direct send" }
+                session.sendEnvelope(errorEnvelope)
+            }
             run.completed = true
+        } finally {
+            if (run.completed) {
+                runs.remove(runKey)
+            }
         }
     }
 
@@ -185,14 +268,16 @@ class ChatBridgeService(
         sourceEnvelope: ChatEnvelope,
         run: CachedRun,
         event: ChannelStreamEvent,
+        userId: String,
     ) {
         when (event) {
             is ChannelStreamEvent.TextDelta -> {
                 val seq = ++run.textSeq
-                cacheAndSend(
-                    session,
-                    run,
-                    sourceEnvelope.serverEvent(
+                persistAndSend(
+                    session = session,
+                    run = run,
+                    userId = userId,
+                    envelope = sourceEnvelope.serverEvent(
                         event = "message.delta",
                         messageId = run.assistantMessageId,
                         cardId = event.cardId,
@@ -203,10 +288,11 @@ class ChatBridgeService(
             }
 
             is ChannelStreamEvent.ImageCard -> {
-                cacheAndSend(
-                    session,
-                    run,
-                    sourceEnvelope.serverEvent(
+                persistAndSend(
+                    session = session,
+                    run = run,
+                    userId = userId,
+                    envelope = sourceEnvelope.serverEvent(
                         event = "card.replace",
                         messageId = run.assistantMessageId,
                         cardId = event.cardId,
@@ -221,10 +307,11 @@ class ChatBridgeService(
 
             is ChannelStreamEvent.AudioCard -> {
                 run.audioStarted = true
-                cacheAndSend(
-                    session,
-                    run,
-                    sourceEnvelope.serverEvent(
+                persistAndSend(
+                    session = session,
+                    run = run,
+                    userId = userId,
+                    envelope = sourceEnvelope.serverEvent(
                         event = "card.replace",
                         messageId = run.assistantMessageId,
                         cardId = event.cardId,
@@ -240,10 +327,11 @@ class ChatBridgeService(
             is ChannelStreamEvent.AudioChunk -> {
                 run.audioStarted = true
                 val seq = run.audioSeqByCard.merge(event.cardId, 1L) { current, _ -> current + 1 } ?: 1L
-                cacheAndSend(
-                    session,
-                    run,
-                    sourceEnvelope.serverEvent(
+                persistAndSend(
+                    session = session,
+                    run = run,
+                    userId = userId,
+                    envelope = sourceEnvelope.serverEvent(
                         event = "audio.output.chunk",
                         messageId = run.assistantMessageId,
                         cardId = event.cardId,
@@ -259,10 +347,11 @@ class ChatBridgeService(
 
             is ChannelStreamEvent.Complete -> {
                 if (run.audioStarted) {
-                    cacheAndSend(
-                        session,
-                        run,
-                        sourceEnvelope.serverEvent(
+                    persistAndSend(
+                        session = session,
+                        run = run,
+                        userId = userId,
+                        envelope = sourceEnvelope.serverEvent(
                             event = "audio.output.complete",
                             messageId = run.assistantMessageId,
                             payload = null,
@@ -270,10 +359,11 @@ class ChatBridgeService(
                     )
                 }
 
-                cacheAndSend(
-                    session,
-                    run,
-                    sourceEnvelope.serverEvent(
+                persistAndSend(
+                    session = session,
+                    run = run,
+                    userId = userId,
+                    envelope = sourceEnvelope.serverEvent(
                         event = "message.complete",
                         messageId = run.assistantMessageId,
                         seq = run.textSeq + 1,
@@ -284,10 +374,11 @@ class ChatBridgeService(
             }
 
             is ChannelStreamEvent.Error -> {
-                cacheAndSend(
-                    session,
-                    run,
-                    sourceEnvelope.serverEvent(
+                persistAndSend(
+                    session = session,
+                    run = run,
+                    userId = userId,
+                    envelope = sourceEnvelope.serverEvent(
                         event = "message.error",
                         messageId = run.errorMessageId(),
                         payload = ErrorPayload(event.code, event.message),
@@ -302,13 +393,15 @@ class ChatBridgeService(
         run.events.forEach { session.sendEnvelope(it) }
     }
 
-    private suspend fun cacheAndSend(
+    private suspend fun persistAndSend(
         session: WebSocketServerSession,
         run: CachedRun,
+        userId: String,
         envelope: ChatEnvelope,
     ) {
-        run.events += envelope
-        session.sendEnvelope(envelope)
+        val persisted = chatStore.appendEvent(userId, envelope)
+        run.events += persisted
+        session.sendEnvelope(persisted)
     }
 
     private suspend fun WebSocketServerSession.sendEnvelope(envelope: ChatEnvelope) {
@@ -316,7 +409,7 @@ class ChatBridgeService(
     }
 
     private suspend fun WebSocketServerSession.sendError(
-        conversationId: String,
+        groupId: String,
         messageId: String,
         clientMessageId: String,
         traceId: String,
@@ -327,7 +420,7 @@ class ChatBridgeService(
             ChatEnvelope(
                 event = "message.error",
                 traceId = traceId,
-                conversationId = conversationId,
+                groupId = groupId,
                 messageId = messageId,
                 clientMessageId = clientMessageId,
                 timestamp = now(),
@@ -349,7 +442,7 @@ class ChatBridgeService(
         return ChatEnvelope(
             event = event,
             traceId = traceId.ifBlank { nextTraceId(event) },
-            conversationId = conversationId,
+            groupId = groupId,
             messageId = messageId,
             clientMessageId = clientMessageId,
             cardId = cardId,
@@ -373,8 +466,8 @@ class ChatBridgeService(
         }
     }
 
-    private fun runKey(conversationId: String, clientMessageId: String): String =
-        "$conversationId::$clientMessageId"
+    private fun runKey(userId: String, groupId: String, clientMessageId: String): String =
+        "$userId::$groupId::$clientMessageId"
 
     private fun CachedRun.errorMessageId(): String =
         if (assistantStarted) assistantMessageId else userMessageId

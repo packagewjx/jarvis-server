@@ -103,12 +103,13 @@ All WebSocket frames should use one unified envelope.
 {
   "event": "message.delta",
   "trace_id": "evt_1710000000_12345",
-  "conversation_id": "conv_001",
+  "group_id": "g_001",
   "message_id": "msg_srv_001",
   "client_message_id": "msg_local_001",
   "card_id": "card_text_main",
   "seq": 3,
   "timestamp": 1710000000123,
+  "event_id": 1024,
   "payload": {}
 }
 ```
@@ -117,12 +118,13 @@ All WebSocket frames should use one unified envelope.
 
 - `event`: event type string
 - `trace_id`: request / event trace id
-- `conversation_id`: conversation id
+- `group_id`: group id
 - `message_id`: server-side message entity id
 - `client_message_id`: client request turn id used for event correlation
 - `card_id`: target card id when updating a specific card
 - `seq`: sequence number for ordering deltas or chunks
 - `timestamp`: server event time in ms
+- `event_id`: server-assigned monotonic event id for sync and dedupe
 - `payload`: event-specific body
 
 ## Message ID Semantics
@@ -161,7 +163,7 @@ Client sends one user message.
 {
   "event": "message.send",
   "trace_id": "evt_xxx",
-  "conversation_id": "conv_001",
+  "group_id": "g_001",
   "client_message_id": "local_001",
   "message_id": "",
   "card_id": "",
@@ -194,7 +196,7 @@ Used for heartbeat.
 {
   "event": "ping",
   "trace_id": "ping_1710000000",
-  "conversation_id": "conv_001",
+  "group_id": "g_001",
   "message_id": "",
   "client_message_id": "",
   "card_id": "",
@@ -212,7 +214,7 @@ Optional. If you want the app to upload ASR input to your own server rather than
 {
   "event": "audio.input.chunk",
   "trace_id": "evt_xxx",
-  "conversation_id": "conv_001",
+  "group_id": "g_001",
   "message_id": "msg_voice_001",
   "client_message_id": "local_voice_001",
   "card_id": "card_audio_in_1",
@@ -241,7 +243,7 @@ Send after successful connection.
 {
   "event": "session.welcome",
   "trace_id": "evt_xxx",
-  "conversation_id": "conv_001",
+  "group_id": "g_001",
   "message_id": "",
   "client_message_id": "",
   "card_id": "",
@@ -262,7 +264,7 @@ Server confirms receipt of the client message.
 {
   "event": "message.ack",
   "trace_id": "evt_xxx",
-  "conversation_id": "conv_001",
+  "group_id": "g_001",
   "message_id": "msg_srv_user_001",
   "client_message_id": "local_001",
   "card_id": "",
@@ -282,7 +284,7 @@ Server starts one assistant response.
 {
   "event": "message.start",
   "trace_id": "evt_xxx",
-  "conversation_id": "conv_001",
+  "group_id": "g_001",
   "message_id": "msg_srv_assistant_001",
   "client_message_id": "local_001",
   "card_id": "",
@@ -302,7 +304,7 @@ Append streamed text to one text card.
 {
   "event": "message.delta",
   "trace_id": "evt_xxx",
-  "conversation_id": "conv_001",
+  "group_id": "g_001",
   "message_id": "msg_srv_assistant_001",
   "client_message_id": "local_001",
   "card_id": "card_text_main",
@@ -322,7 +324,7 @@ Replace or create a non-streaming card.
 {
   "event": "card.replace",
   "trace_id": "evt_xxx",
-  "conversation_id": "conv_001",
+  "group_id": "g_001",
   "message_id": "msg_srv_assistant_001",
   "client_message_id": "local_001",
   "card_id": "card_image_1",
@@ -350,7 +352,7 @@ Push one streamed audio chunk.
 {
   "event": "audio.output.chunk",
   "trace_id": "evt_xxx",
-  "conversation_id": "conv_001",
+  "group_id": "g_001",
   "message_id": "msg_srv_assistant_001",
   "client_message_id": "local_001",
   "card_id": "card_audio_out_1",
@@ -376,7 +378,7 @@ Marks the assistant message complete.
 {
   "event": "message.complete",
   "trace_id": "evt_xxx",
-  "conversation_id": "conv_001",
+  "group_id": "g_001",
   "message_id": "msg_srv_assistant_001",
   "client_message_id": "local_001",
   "card_id": "",
@@ -396,7 +398,7 @@ Failure for either send or generation.
 {
   "event": "message.error",
   "trace_id": "evt_xxx",
-  "conversation_id": "conv_001",
+  "group_id": "g_001",
   "message_id": "msg_srv_assistant_001",
   "client_message_id": "local_001",
   "card_id": "",
@@ -461,7 +463,7 @@ If you later want lower latency:
 
 ## Idempotency
 
-Server should treat `client_message_id` as idempotency key per conversation.
+Server should treat `client_message_id` as idempotency key per group.
 
 If the same `client_message_id` is received again:
 
@@ -470,53 +472,60 @@ If the same `client_message_id` is received again:
 - keep the same assistant message id for the replayed stream/events
 - optionally resume the existing generation stream
 
-## History API Recommendation
+## Incremental Sync API
 
-HTTP endpoint example:
+HTTP endpoint:
 
-- `GET /api/chat/conversations/:id/messages?cursor=...`
+- `GET /api/chat/groups/{groupId}/events/sync?after_event_id=0&limit=100`
 
-Return normalized messages with cards:
+Required headers:
+
+- `Authorization: Bearer <token>`
+
+Response:
 
 ```json
 {
   "items": [
     {
-      "id": "msg_001",
-      "conversation_id": "conv_001",
-      "role": "assistant",
-      "created_at": 1710000000123,
-      "status": "completed",
-      "cards": [
-        {
-          "id": "card_text_main",
-          "cardType": "text",
-          "text": "你好",
-          "imageUrl": "",
-          "audioUrl": "",
-          "audioMime": "",
-          "durationMs": 0,
-          "extra": null
-        }
-      ]
+      "event": "message.ack",
+      "trace_id": "trace_1",
+      "group_id": "g_001",
+      "message_id": "msg_srv_user_001",
+      "client_message_id": "local_001",
+      "card_id": "",
+      "seq": 0,
+      "timestamp": 1710000000123,
+      "event_id": 1024,
+      "payload": { "accepted": true }
     }
   ],
-  "next_cursor": "abc"
+  "next_after_event_id": 1024,
+  "has_more": false
 }
 ```
+
+Client sync sequence:
+
+1. Persist `last_event_id` by `user_id + group_id`.
+2. On page enter, call sync API with `after_event_id=last_event_id`.
+3. Apply returned envelopes in order, dedupe by `event_id`.
+4. Continue while `has_more=true`.
+5. Start websocket and keep advancing `last_event_id`.
 
 ## Server State Recommendation
 
 You should persist at least:
 
-- conversations
+- groups
 - messages
 - message_cards
 - outbound event log or stream sequence cursor
 
 Suggested logical tables:
 
-- `conversations`
+- `chat_groups`
+- `group_memberships`
 - `messages`
 - `message_cards`
 - `message_events`
@@ -561,4 +570,4 @@ Implement the server in this exact order:
 2. `message.start` -> repeated `message.delta` -> `message.complete`
 3. image card support via `card.replace`
 4. audio output support via `audio.output.chunk`
-5. history HTTP API
+5. incremental events sync API

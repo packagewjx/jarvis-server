@@ -8,12 +8,13 @@ import kotlinx.serialization.json.JsonElement
 data class ChatEnvelope(
     val event: String,
     @SerialName("trace_id") val traceId: String,
-    @SerialName("conversation_id") val conversationId: String,
+    @SerialName("group_id") val groupId: String,
     @SerialName("message_id") val messageId: String = "",
     @SerialName("client_message_id") val clientMessageId: String = "",
     @SerialName("card_id") val cardId: String = "",
     val seq: Long = 0,
     val timestamp: Long,
+    @SerialName("event_id") val eventId: Long = 0,
     val payload: JsonElement? = null,
 )
 
@@ -86,6 +87,71 @@ data class ChannelSendRequest(
 
 @Serializable
 data class ChannelSendAccepted(val requestId: String)
+
+@Serializable
+data class ChatEventsSyncResponse(
+    val items: List<ChatEnvelope>,
+    @SerialName("next_after_event_id") val nextAfterEventId: Long,
+    @SerialName("has_more") val hasMore: Boolean,
+)
+
+@Serializable
+data class AuthRegisterRequest(
+    val username: String,
+    val password: String,
+)
+
+@Serializable
+data class AuthLoginRequest(
+    val username: String,
+    val password: String,
+)
+
+@Serializable
+data class AuthRefreshRequest(
+    @SerialName("refresh_token") val refreshToken: String,
+)
+
+@Serializable
+data class AuthUserPayload(
+    @SerialName("user_id") val userId: String,
+    val username: String,
+)
+
+@Serializable
+data class AuthTokenResponse(
+    @SerialName("access_token") val accessToken: String,
+    @SerialName("refresh_token") val refreshToken: String,
+    @SerialName("expires_in") val expiresIn: Long,
+    val user: AuthUserPayload? = null,
+)
+
+@Serializable
+data class JoinGroupRequest(
+    @SerialName("join_code") val joinCode: String,
+)
+
+@Serializable
+data class GroupPayload(
+    @SerialName("group_id") val groupId: String,
+    val name: String,
+)
+
+@Serializable
+data class GroupListResponse(
+    val items: List<GroupPayload>,
+)
+
+@Serializable
+data class GroupMembershipPayload(
+    @SerialName("joined_at") val joinedAt: Long,
+)
+
+@Serializable
+data class JoinGroupResponse(
+    val group: GroupPayload,
+    val membership: GroupMembershipPayload,
+)
 
 @Serializable
 sealed interface ChannelStreamEvent {

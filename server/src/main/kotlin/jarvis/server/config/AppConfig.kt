@@ -5,20 +5,88 @@ import java.net.URI
 data class AppConfig(
     val host: String,
     val port: Int,
-    val authToken: String,
-    val userId: String,
     val channel: ChannelConfig,
     val iat: XfyunIatConfig,
+    val database: DatabaseConfig,
+    val chatPersistence: ChatPersistenceConfig,
+    val jwt: JwtConfig,
 ) {
     companion object {
         fun fromEnvironment(): AppConfig {
             return AppConfig(
                 host = env("JARVIS_SERVER_HOST", "0.0.0.0"),
                 port = env("JARVIS_SERVER_PORT", "8080").toInt(),
-                authToken = env("JARVIS_SERVER_AUTH_TOKEN", "dev-client-token"),
-                userId = env("JARVIS_SERVER_USER_ID", "dev-user"),
                 channel = ChannelConfig.fromEnvironment(),
                 iat = XfyunIatConfig.fromEnvironment(),
+                database = DatabaseConfig.fromEnvironment(),
+                chatPersistence = ChatPersistenceConfig.fromEnvironment(),
+                jwt = JwtConfig.fromEnvironment(),
+            )
+        }
+
+        private fun env(name: String, default: String? = null): String {
+            return System.getenv(name)
+                ?: default
+                ?: error("Missing required environment variable: $name")
+        }
+    }
+}
+
+data class DatabaseConfig(
+    val jdbcUrl: String,
+    val user: String,
+    val password: String,
+    val maxPoolSize: Int,
+) {
+    companion object {
+        fun fromEnvironment(): DatabaseConfig {
+            return DatabaseConfig(
+                jdbcUrl = env("JARVIS_DB_JDBC_URL", "jdbc:postgresql://127.0.0.1:5432/jarvis"),
+                user = env("JARVIS_DB_USER", "jarvis"),
+                password = env("JARVIS_DB_PASSWORD", "jarvis"),
+                maxPoolSize = env("JARVIS_DB_MAX_POOL_SIZE", "10").toInt(),
+            )
+        }
+
+        private fun env(name: String, default: String? = null): String {
+            return System.getenv(name)
+                ?: default
+                ?: error("Missing required environment variable: $name")
+        }
+    }
+}
+
+data class ChatPersistenceConfig(
+    val retentionDays: Int,
+) {
+    companion object {
+        fun fromEnvironment(): ChatPersistenceConfig {
+            return ChatPersistenceConfig(
+                retentionDays = env("JARVIS_CHAT_RETENTION_DAYS", "7").toInt(),
+            )
+        }
+
+        private fun env(name: String, default: String? = null): String {
+            return System.getenv(name)
+                ?: default
+                ?: error("Missing required environment variable: $name")
+        }
+    }
+}
+
+data class JwtConfig(
+    val secret: String,
+    val issuer: String,
+    val accessTtlSec: Long,
+    val refreshTtlSec: Long,
+) {
+    companion object {
+        fun fromEnvironment(): JwtConfig {
+            return JwtConfig(
+                secret = env("JARVIS_JWT_SECRET", "dev-jwt-secret-change-me"),
+                issuer = env("JARVIS_JWT_ISSUER", "jarvis-server"),
+                accessTtlSec = env("JARVIS_JWT_ACCESS_TTL_SEC", "7200").toLong(),
+                refreshTtlSec = env("JARVIS_JWT_REFRESH_TTL_SEC", "2592000").toLong(),
             )
         }
 

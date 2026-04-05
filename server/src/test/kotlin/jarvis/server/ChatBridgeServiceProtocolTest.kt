@@ -3,28 +3,22 @@ package jarvis.server
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets as ClientWebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
-import io.ktor.client.plugins.defaultRequest
-import io.ktor.http.HttpHeaders
 import io.ktor.server.application.Application
-import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import io.ktor.server.websocket.WebSockets as ServerWebSockets
 import io.ktor.server.websocket.webSocket
-import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
-import jarvis.server.config.AppConfig
-import jarvis.server.config.ChannelConfig
-import jarvis.server.config.XfyunIatConfig
 import jarvis.server.gateway.ChannelGateway
 import jarvis.server.model.ChannelSendRequest
 import jarvis.server.model.ChannelStreamEvent
 import jarvis.server.model.ChatEnvelope
 import jarvis.server.model.MessageCard
 import jarvis.server.model.MessageSendPayload
+import jarvis.server.persistence.InMemoryChatStore
 import jarvis.server.service.ChatBridgeService
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -41,15 +35,20 @@ class ChatBridgeServiceProtocolTest {
     @Test
     fun `ack uses user message id and assistant stream uses assistant message id`() = testApplication {
         val gateway = FakeChannelGateway(mode = FakeGatewayMode.SUCCESS)
+        val store = InMemoryChatStore()
+        val user = requireNotNull(store.createUser("tester1", "hash"))
+        requireNotNull(store.joinGroupByInvite(user.userId, "DEFAULT-GROUP"))
+        val service = ChatBridgeService(
+            channelGateway = gateway,
+            chatStore = store,
+            json = json,
+        )
         application {
-            chatModule(createService(gateway))
+            chatModule(service, user.userId)
         }
 
         val client = createClient {
             install(ClientWebSockets)
-            defaultRequest {
-                headers.append(HttpHeaders.Authorization, "Bearer test-token")
-            }
         }
         val session = client.webSocketSession("/ws/chat")
 
@@ -57,7 +56,7 @@ class ChatBridgeServiceProtocolTest {
         session.sendEnvelope(
             json,
             messageSendEnvelope(
-                conversationId = "conv_1",
+                groupId = "g_default",
                 clientMessageId = "local_1",
             ),
         )
@@ -90,15 +89,20 @@ class ChatBridgeServiceProtocolTest {
     @Test
     fun `message error uses user message id when send phase fails before assistant start`() = testApplication {
         val gateway = FakeChannelGateway(mode = FakeGatewayMode.SUBMIT_FAILURE)
+        val store = InMemoryChatStore()
+        val user = requireNotNull(store.createUser("tester2", "hash"))
+        requireNotNull(store.joinGroupByInvite(user.userId, "DEFAULT-GROUP"))
+        val service = ChatBridgeService(
+            channelGateway = gateway,
+            chatStore = store,
+            json = json,
+        )
         application {
-            chatModule(createService(gateway))
+            chatModule(service, user.userId)
         }
 
         val client = createClient {
             install(ClientWebSockets)
-            defaultRequest {
-                headers.append(HttpHeaders.Authorization, "Bearer test-token")
-            }
         }
         val session = client.webSocketSession("/ws/chat")
 
@@ -106,7 +110,7 @@ class ChatBridgeServiceProtocolTest {
         session.sendEnvelope(
             json,
             messageSendEnvelope(
-                conversationId = "conv_2",
+                groupId = "g_default",
                 clientMessageId = "local_2",
             ),
         )
@@ -123,15 +127,20 @@ class ChatBridgeServiceProtocolTest {
     @Test
     fun `message error uses assistant message id when generation fails after assistant start`() = testApplication {
         val gateway = FakeChannelGateway(mode = FakeGatewayMode.STREAM_FAILURE)
+        val store = InMemoryChatStore()
+        val user = requireNotNull(store.createUser("tester3", "hash"))
+        requireNotNull(store.joinGroupByInvite(user.userId, "DEFAULT-GROUP"))
+        val service = ChatBridgeService(
+            channelGateway = gateway,
+            chatStore = store,
+            json = json,
+        )
         application {
-            chatModule(createService(gateway))
+            chatModule(service, user.userId)
         }
 
         val client = createClient {
             install(ClientWebSockets)
-            defaultRequest {
-                headers.append(HttpHeaders.Authorization, "Bearer test-token")
-            }
         }
         val session = client.webSocketSession("/ws/chat")
 
@@ -139,7 +148,7 @@ class ChatBridgeServiceProtocolTest {
         session.sendEnvelope(
             json,
             messageSendEnvelope(
-                conversationId = "conv_3",
+                groupId = "g_default",
                 clientMessageId = "local_3",
             ),
         )
@@ -161,63 +170,59 @@ class ChatBridgeServiceProtocolTest {
         session.close()
     }
 
-    private fun createService(gateway: ChannelGateway): ChatBridgeService {
-        return ChatBridgeService(
-            config = AppConfig(
-                host = "127.0.0.1",
-                port = 8080,
-                authToken = "test-token",
-                userId = "test-user",
-                channel = ChannelConfig(
-                    baseUrl = "https://localhost:9443",
-                    authToken = "channel-token",
-                    connectTimeoutMs = 1000,
-                    readTimeoutMs = 1000,
-                    caCertPath = null,
-                    hostnameVerification = true,
-                ),
-                iat = XfyunIatConfig(
-                    appId = null,
-                    apiKey = null,
-                    apiSecret = null,
-                    host = "iat.cn-huabei-1.xf-yun.com",
-                    path = "/v1",
-                    ttlSec = 120,
-                    rateLimitPerMinute = 30,
-                    defaultSampleRate = 16000,
-                    defaultDomain = "slm",
-                    defaultLanguage = "zh_cn",
-                    defaultAccent = "mulacc",
-                    audioEncoding = "lame",
-                ),
-            ),
+    @Test
+    fun `message send is rejected when user is not group member`() = testApplication {
+        val gateway = FakeChannelGateway(mode = FakeGatewayMode.SUCCESS)
+        val store = InMemoryChatStore()
+        val user = requireNotNull(store.createUser("tester4", "hash"))
+        val service = ChatBridgeService(
             channelGateway = gateway,
+            chatStore = store,
             json = json,
         )
+        application {
+            chatModule(service, user.userId)
+        }
+
+        val client = createClient {
+            install(ClientWebSockets)
+        }
+        val session = client.webSocketSession("/ws/chat")
+        session.awaitEnvelope(json) // session.welcome
+        session.sendEnvelope(
+            json,
+            messageSendEnvelope(
+                groupId = "g_default",
+                clientMessageId = "local_4",
+            ),
+        )
+        val error = session.awaitEnvelope(json)
+        assertEquals("message.error", error.event)
+        val payload = json.decodeFromJsonElement(
+            jarvis.server.model.ErrorPayload.serializer(),
+            requireNotNull(error.payload),
+        )
+        assertEquals("FORBIDDEN_GROUP", payload.code)
+        session.close()
     }
 
-    private fun Application.chatModule(chatBridgeService: ChatBridgeService) {
+    private fun Application.chatModule(chatBridgeService: ChatBridgeService, userId: String) {
         install(ServerWebSockets)
         routing {
             webSocket("/ws/chat") {
-                val header = call.request.headers[HttpHeaders.Authorization]
-                if (!chatBridgeService.isAuthorized(header)) {
-                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Invalid bearer token"))
-                    return@webSocket
-                }
-                chatBridgeService.handleSession(this)
+                chatBridgeService.handleSession(this, userId)
             }
         }
     }
 
     private fun messageSendEnvelope(
-        conversationId: String,
+        groupId: String,
         clientMessageId: String,
     ): ChatEnvelope {
         return ChatEnvelope(
             event = "message.send",
             traceId = "trace_$clientMessageId",
-            conversationId = conversationId,
+            groupId = groupId,
             clientMessageId = clientMessageId,
             timestamp = System.currentTimeMillis(),
             payload = json.encodeToJsonElement(

@@ -15,6 +15,7 @@ This repository contains a two-module bridge between a chat client and OpenClaw:
 ## Project layout
 
 - `chat-server-protocol.md`: client/server protocol contract
+- `docs/client-chat-protocol-v2.md`: client integration guide for event sync and `event_id` cursoring
 - `server/`: Kotlin Ktor app
 - `openclaw-channel/`: OpenClaw SDK plugin and standalone HTTPS bridge process
 
@@ -24,8 +25,15 @@ This repository contains a two-module bridge between a chat client and OpenClaw:
 
 - `JARVIS_SERVER_HOST` default `0.0.0.0`
 - `JARVIS_SERVER_PORT` default `8080`
-- `JARVIS_SERVER_AUTH_TOKEN` default `dev-client-token`
-- `JARVIS_SERVER_USER_ID` default `dev-user`
+- `JARVIS_CHAT_RETENTION_DAYS` default `7`
+- `JARVIS_JWT_SECRET` default `dev-jwt-secret-change-me`
+- `JARVIS_JWT_ISSUER` default `jarvis-server`
+- `JARVIS_JWT_ACCESS_TTL_SEC` default `7200`
+- `JARVIS_JWT_REFRESH_TTL_SEC` default `2592000`
+- `JARVIS_DB_JDBC_URL` default `jdbc:postgresql://127.0.0.1:5432/jarvis`
+- `JARVIS_DB_USER` default `jarvis`
+- `JARVIS_DB_PASSWORD` default `jarvis`
+- `JARVIS_DB_MAX_POOL_SIZE` default `10`
 - `JARVIS_XFYUN_IAT_APP_ID` optional; required to run actual IAT recognition request frames
 - `JARVIS_XFYUN_IAT_API_KEY` optional; required to enable `GET /api/voice/iat-sign-url`
 - `JARVIS_XFYUN_IAT_API_SECRET` optional; required to enable `GET /api/voice/iat-sign-url`
@@ -117,9 +125,15 @@ Other actions:
 
 `GET /api/voice/iat-sign-url`
 
-Use the same bearer token as websocket auth:
+Use an authenticated access token:
 
-`Authorization: Bearer <JARVIS_SERVER_AUTH_TOKEN>`
+`Authorization: Bearer <access_token>`
+
+You can obtain tokens from:
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
 
 Optional query parameters:
 
@@ -130,6 +144,34 @@ Optional query parameters:
 
 Success response includes `data.wsUrl`, `expireAt`, `ttlSec`, and the effective session config.
 `data.config.appId` is returned for client request-frame `header.app_id`.
+
+### Chat events sync API
+
+`GET /api/chat/groups/{groupId}/events/sync?after_event_id=<id>&limit=<n>`
+
+Required headers:
+
+- `Authorization: Bearer <access_token>`
+
+Response fields:
+
+- `items`: ordered chat envelopes with `event_id`
+- `next_after_event_id`: newest event id in this page
+- `has_more`: whether more pages are available
+
+Client recommendation:
+
+1. Persist `last_event_id` by `user_id + group_id`.
+2. On page enter, call sync API until `has_more=false`.
+3. Then connect WebSocket and deduplicate by `event_id`.
+
+### Auth and group APIs
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `GET /api/groups/mine`
+- `POST /api/groups/join` (body: `join_code`)
 
 By default the script runs OpenClaw CLI via `npx openclaw` inside `openclaw-channel/`.
 If you want to use your system-installed OpenClaw binary, set:
@@ -164,12 +206,13 @@ Then restart Docker daemon (`sudo systemctl restart docker`) and verify with:
 docker info | rg -n "Registry Mirrors" -A 5
 ```
 
-### Docker image deploy (server + nginx in one container)
+### Docker deploy (server + nginx + PostgreSQL)
 
-This repo includes a single-image deployment path:
+This repo includes a container deployment path:
 
-- Kotlin `server` process
-- Nginx TLS termination (HTTPS)
+- Kotlin `server` process (app container)
+- Nginx TLS termination (inside app container)
+- PostgreSQL container for message persistence
 
 Files:
 
@@ -191,6 +234,8 @@ Required envs for `start` in `deploy.docker.env`:
 
 - `TLS_CERT_PATH` (host path to cert pem/crt)
 - `TLS_KEY_PATH` (host path to key pem)
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+- `JARVIS_DB_JDBC_URL`, `JARVIS_DB_USER`, `JARVIS_DB_PASSWORD`
 
 Commands:
 
@@ -211,10 +256,18 @@ After `start`, HTTPS endpoint is:
 
 `https://127.0.0.1:${HOST_HTTPS_PORT}/health`
 
+Database container defaults:
+
+- Image: `postgres:16-alpine`
+- Port mapping: `${POSTGRES_HOST_PORT}:5432`
+- Data volume: `${POSTGRES_VOLUME}`
+
 ## Notes
 
 - The Kotlin bridge is the source of truth for client-visible `message_id` values and sequence ordering.
 - `message.ack.message_id` is the user message id, while `message.start/delta/complete` use assistant message id. The two ids are always different.
-- Idempotency is enforced per `conversation_id + client_message_id` in memory.
+- `group_message_events` are persisted in PostgreSQL and replayed per `sender_user_id + group_id + client_message_id`.
+- Every websocket and sync request must include `Authorization: Bearer <access_token>`.
+- Clients should store and advance `event_id` to sync missing events.
 - The TypeScript channel bridge now calls `openclaw agent --json` to fetch real model replies.
 - You can tune bridge runtime behavior with optional env vars such as `OPENCLAW_AGENT_WORKDIR`, `OPENCLAW_AGENT_ID`, `OPENCLAW_AGENT_LOCAL`, and `OPENCLAW_AGENT_TIMEOUT_MS`.
