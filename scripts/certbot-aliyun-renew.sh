@@ -90,7 +90,7 @@ validate_common_config() {
   ARCH_CERT_PEM_NAME="${ARCH_CERT_PEM_NAME:-${CERT_DOMAIN}.pem}"
   ARCH_KEY_NAME="${ARCH_KEY_NAME:-${CERT_DOMAIN}.key}"
   COPY_WITH_DOCKER="${COPY_WITH_DOCKER:-auto}"
-  COPY_HELPER_IMAGE="${COPY_HELPER_IMAGE:-alpine:3.20}"
+  COPY_HELPER_IMAGE="${COPY_HELPER_IMAGE:-${DOCKER_IMAGE}}"
   CERTBOT_DRY_RUN="${CERTBOT_DRY_RUN:-false}"
   POST_DEPLOY_CMD="${POST_DEPLOY_CMD:-}"
   CRON_SCHEDULE="${CRON_SCHEDULE:-0 3 1 * *}"
@@ -223,6 +223,13 @@ copy_outputs_to_arch_dirs() {
 
   if [[ "${use_docker_copy}" == "true" ]]; then
     need_command docker
+    if ! docker image inspect "${COPY_HELPER_IMAGE}" >/dev/null 2>&1; then
+      if docker image inspect "${DOCKER_IMAGE}" >/dev/null 2>&1; then
+        COPY_HELPER_IMAGE="${DOCKER_IMAGE}"
+      else
+        fail "Copy helper image not found: ${COPY_HELPER_IMAGE}"
+      fi
+    fi
     log "Copying cert/key via docker helper image ${COPY_HELPER_IMAGE}"
     docker run --rm \
       -e CERT_DOMAIN="${CERT_DOMAIN}" \
