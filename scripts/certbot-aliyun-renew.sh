@@ -78,7 +78,9 @@ load_config() {
 }
 
 validate_common_config() {
-  DOCKER_IMAGE="${DOCKER_IMAGE:-justjavac/certbot-dns-aliyun:latest}"
+  DOCKER_IMAGE="${DOCKER_IMAGE:-certbot-dns-aliyun:local}"
+  AUTO_BUILD_DOCKER_IMAGE="${AUTO_BUILD_DOCKER_IMAGE:-true}"
+  CERTBOT_IMAGE_SOURCE="${CERTBOT_IMAGE_SOURCE:-https://github.com/justjavac/certbot-dns-aliyun.git#main}"
   CERT_DOMAIN="${CERT_DOMAIN:-api.jarvis.xense-ai.com}"
   LETSENCRYPT_STATE_DIR="${LETSENCRYPT_STATE_DIR:-/var/lib/jarvis-letsencrypt}"
   ARCH_CERT_DIR="${ARCH_CERT_DIR:-}"
@@ -123,10 +125,24 @@ acquire_lock() {
   fi
 }
 
+ensure_docker_image() {
+  if docker image inspect "${DOCKER_IMAGE}" >/dev/null 2>&1; then
+    return
+  fi
+
+  if [[ "${AUTO_BUILD_DOCKER_IMAGE}" != "true" ]]; then
+    fail "Docker image not found: ${DOCKER_IMAGE}. Set AUTO_BUILD_DOCKER_IMAGE=true or build it manually."
+  fi
+
+  log "Docker image not found, building ${DOCKER_IMAGE} from ${CERTBOT_IMAGE_SOURCE}"
+  docker build -t "${DOCKER_IMAGE}" "${CERTBOT_IMAGE_SOURCE}"
+}
+
 run_certbot_in_docker() {
   need_command docker
 
   mkdir -p "${LETSENCRYPT_STATE_DIR}" "${ARCH_CERTS_DIR}" "${ARCH_PRIVATE_DIR}"
+  ensure_docker_image
 
   log "Running certbot for domain ${CERT_DOMAIN} with image ${DOCKER_IMAGE}"
   docker run --rm \
@@ -286,6 +302,10 @@ load_config
 validate_common_config
 
 case "${ACTION}" in
+  build-image)
+    need_command docker
+    ensure_docker_image
+    ;;
   run)
     acquire_lock
     run_certbot_in_docker
@@ -299,6 +319,6 @@ case "${ACTION}" in
     uninstall_monthly_cron
     ;;
   *)
-    fail "Unsupported action: ${ACTION}. Use run|install-cron|uninstall-cron"
+    fail "Unsupported action: ${ACTION}. Use build-image|run|install-cron|uninstall-cron"
     ;;
 esac
