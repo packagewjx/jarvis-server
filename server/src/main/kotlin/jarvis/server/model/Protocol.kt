@@ -23,6 +23,8 @@ data class MessageSendPayload(
     val role: String,
     val cards: List<MessageCard>,
     @SerialName("created_at") val createdAt: Long,
+    @SerialName("input_mode") val inputMode: String = "text",
+    val command: MessageCommandPayload? = null,
 )
 
 @Serializable
@@ -35,6 +37,12 @@ data class MessageCard(
     val audioMime: String = "",
     val durationMs: Long = 0,
     val extra: JsonElement? = null,
+)
+
+@Serializable
+data class MessageCommandPayload(
+    val name: String,
+    val args: List<String> = emptyList(),
 )
 
 @Serializable

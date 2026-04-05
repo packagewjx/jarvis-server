@@ -237,10 +237,54 @@ Client -> Server：
         "extra": null
       }
     ],
-    "created_at": 1710000000000
+    "created_at": 1710000000000,
+    "input_mode": "text",
+    "command": null
   }
 }
 ```
+
+### 5.1.1 命令模式（商用建议）
+
+`payload.input_mode`:
+
+- `text`：普通文本对话（默认）
+- `command`：执行受控命令（白名单 + 参数校验）
+
+推荐优先用结构化命令字段：
+
+```json
+{
+  "event": "message.send",
+  "trace_id": "trace_cmd_001",
+  "group_id": "g_001",
+  "message_id": "",
+  "client_message_id": "local_cmd_001",
+  "card_id": "",
+  "seq": 0,
+  "timestamp": 1710000000000,
+  "payload": {
+    "role": "user",
+    "cards": [],
+    "created_at": 1710000000000,
+    "input_mode": "command",
+    "command": {
+      "name": "status",
+      "args": []
+    }
+  }
+}
+```
+
+兼容旧客户端：若 `input_mode` 未设置，服务端可按 slash 前缀自动识别第一张文本卡（如 `/status`）。
+
+当前命令白名单：
+
+- `/help`
+- `/status`
+- `/new` 或 `/reset`
+- `/think <off|minimal|low|medium|high|xhigh>`
+- `/verbose <on|off>`
 
 ### 5.2 正常回包顺序（典型）
 

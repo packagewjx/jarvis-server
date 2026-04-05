@@ -159,6 +159,24 @@ All WebSocket frames should use one unified envelope.
 
 Client sends one user message.
 
+`payload.input_mode` supports two values:
+
+- `text` (default): normal chat text, forwarded to OpenClaw as agent prompt
+- `command`: execute a controlled slash command (whitelist only)
+
+When `input_mode=command`, you can either:
+
+- set `payload.command = { "name": "...", "args": [...] }`, or
+- place slash command text in the first text card (for backward compatibility), e.g. `/status`
+
+Supported command whitelist (current):
+
+- `/help`
+- `/status`
+- `/new` or `/reset`
+- `/think <off|minimal|low|medium|high|xhigh>`
+- `/verbose <on|off>`
+
 ```json
 {
   "event": "message.send",
@@ -183,7 +201,34 @@ Client sends one user message.
         "extra": null
       }
     ],
-    "created_at": 1710000000123
+    "created_at": 1710000000123,
+    "input_mode": "text",
+    "command": null
+  }
+}
+```
+
+Command-mode example:
+
+```json
+{
+  "event": "message.send",
+  "trace_id": "evt_cmd_001",
+  "group_id": "g_001",
+  "client_message_id": "local_cmd_001",
+  "message_id": "",
+  "card_id": "",
+  "seq": 0,
+  "timestamp": 1710000000123,
+  "payload": {
+    "role": "user",
+    "cards": [],
+    "created_at": 1710000000123,
+    "input_mode": "command",
+    "command": {
+      "name": "status",
+      "args": []
+    }
   }
 }
 ```

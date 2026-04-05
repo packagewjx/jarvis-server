@@ -270,4 +270,6 @@ Database container defaults:
 - Every websocket and sync request must include `Authorization: Bearer <access_token>`.
 - Clients should store and advance `event_id` to sync missing events.
 - The TypeScript channel bridge now calls `openclaw agent --json` to fetch real model replies.
-- You can tune bridge runtime behavior with optional env vars such as `OPENCLAW_AGENT_WORKDIR`, `OPENCLAW_AGENT_ID`, `OPENCLAW_AGENT_LOCAL`, and `OPENCLAW_AGENT_TIMEOUT_MS`.
+- You can tune bridge runtime behavior with optional env vars such as `OPENCLAW_AGENT_WORKDIR`, `OPENCLAW_AGENT_ID`, `OPENCLAW_AGENT_LOCAL`, `OPENCLAW_AGENT_TIMEOUT_MS`, `OPENCLAW_AGENT_THINKING`, and `OPENCLAW_AGENT_VERBOSE`.
+- Command mode is supported via `message.send.payload.input_mode=command` and `payload.command`.
+- For command safety, configure `OPENCLAW_COMMAND_ALLOWLIST` and `OPENCLAW_COMMAND_RATE_LIMIT_PER_MIN` (slash auto-detect can be controlled via `OPENCLAW_COMMAND_AUTO_DETECT_SLASH`).

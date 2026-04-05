@@ -13,6 +13,13 @@ export type JarvisMessageSendPayload = {
   role: string;
   cards: JarvisCard[];
   created_at: number;
+  input_mode?: "text" | "command";
+  command?: JarvisCommandPayload;
+};
+
+export type JarvisCommandPayload = {
+  name: string;
+  args?: string[];
 };
 
 export type ChannelSendRequest = {
