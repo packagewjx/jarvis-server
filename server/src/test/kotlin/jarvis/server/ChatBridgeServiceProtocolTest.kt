@@ -206,6 +206,43 @@ class ChatBridgeServiceProtocolTest {
         session.close()
     }
 
+    @Test
+    fun `channel conversation id is namespaced by group id`() = testApplication {
+        val gateway = FakeChannelGateway(mode = FakeGatewayMode.SUCCESS)
+        val store = InMemoryChatStore()
+        val user = requireNotNull(store.createUser("tester5", "hash"))
+        requireNotNull(store.joinGroupByInvite(user.userId, "DEFAULT-GROUP"))
+        val service = ChatBridgeService(
+            channelGateway = gateway,
+            chatStore = store,
+            json = json,
+        )
+        application {
+            chatModule(service, user.userId)
+        }
+
+        val client = createClient {
+            install(ClientWebSockets)
+        }
+        val session = client.webSocketSession("/ws/chat")
+        session.awaitEnvelope(json) // session.welcome
+        session.sendEnvelope(
+            json,
+            messageSendEnvelope(
+                groupId = "g_default",
+                clientMessageId = "local_5",
+            ),
+        )
+
+        session.awaitEnvelope(json) // message.ack
+        session.awaitEnvelope(json) // message.start
+        session.awaitEnvelope(json) // message.delta
+        session.awaitEnvelope(json) // message.complete
+
+        assertEquals("grp_g_default", gateway.lastSubmittedRequest().conversationId)
+        session.close()
+    }
+
     private fun Application.chatModule(chatBridgeService: ChatBridgeService, userId: String) {
         install(ServerWebSockets)
         routing {
@@ -266,6 +303,10 @@ private class FakeChannelGateway(
     private val mode: FakeGatewayMode,
 ) : ChannelGateway {
     private val requests = linkedMapOf<String, ChannelSendRequest>()
+
+    fun lastSubmittedRequest(): ChannelSendRequest {
+        return requests.values.last()
+    }
 
     override suspend fun submit(request: ChannelSendRequest): String {
         if (mode == FakeGatewayMode.SUBMIT_FAILURE) {

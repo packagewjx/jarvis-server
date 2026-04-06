@@ -201,7 +201,7 @@ class ChatBridgeService(
 
             val request = ChannelSendRequest(
                 requestId = run.requestId,
-                conversationId = envelope.groupId,
+                conversationId = openClawConversationId(envelope.groupId),
                 clientMessageId = envelope.clientMessageId,
                 assistantMessageId = assistantMessageId,
                 traceId = envelope.traceId.ifBlank { nextTraceId("send") },
@@ -468,6 +468,8 @@ class ChatBridgeService(
 
     private fun runKey(userId: String, groupId: String, clientMessageId: String): String =
         "$userId::$groupId::$clientMessageId"
+
+    private fun openClawConversationId(groupId: String): String = "grp_$groupId"
 
     private fun CachedRun.errorMessageId(): String =
         if (assistantStarted) assistantMessageId else userMessageId
