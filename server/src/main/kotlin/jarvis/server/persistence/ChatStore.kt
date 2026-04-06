@@ -48,6 +48,13 @@ data class GroupMembership(
     val joinedAt: Long,
 )
 
+data class CreatedGroup(
+    val groupId: String,
+    val groupName: String,
+    val joinedAt: Long,
+    val joinCode: String,
+)
+
 data class ChatEventsPage(
     val items: List<ChatEnvelope>,
     val nextAfterEventId: Long,
@@ -110,6 +117,8 @@ interface ChatStore {
     suspend fun consumeVerificationChallenge(challengeId: String, codeHash: String, now: Long): VerificationChallenge?
 
     suspend fun markUserVerified(userId: String, channel: String, target: String, updatedAt: Long): Boolean
+
+    suspend fun createGroupForUser(userId: String, groupName: String): CreatedGroup?
 
     suspend fun joinGroupByInvite(userId: String, joinCode: String): GroupMembership?
 

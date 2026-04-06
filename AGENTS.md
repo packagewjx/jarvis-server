@@ -6,6 +6,8 @@
 - `server/src/test/kotlin` holds Kotlin tests.
 - `openclaw-channel/` contains the TypeScript OpenClaw channel plugin and standalone HTTPS bridge. Source files are in `openclaw-channel/src`, compiled output goes to `openclaw-channel/dist`.
 - `chat-server-protocol.md` is the client/server contract. Keep protocol DTOs and event mapping aligned with this file.
+- `docs/client-chat-protocol-v3.md` is the client integration protocol source of truth. Whenever API/protocol fields, routes, auth flow, voice capabilities, or error codes change, you must update this file in the same change.
+- For every update to `docs/client-chat-protocol-v3.md`, add a clear update note in Chapter 1 ("变更历史") describing what changed and what client actions are required.
 - `README.md` documents runtime configuration, especially HTTPS-only service-to-service settings.
 
 ## Build, Test, and Development Commands

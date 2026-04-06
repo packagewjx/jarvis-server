@@ -28,6 +28,8 @@ import jarvis.server.model.AuthRegisterRequest
 import jarvis.server.model.AuthTokenResponse
 import jarvis.server.model.AuthUserPayload
 import jarvis.server.model.ChatEventsSyncResponse
+import jarvis.server.model.CreateGroupRequest
+import jarvis.server.model.CreateGroupResponse
 import jarvis.server.model.GenericSuccessResponse
 import jarvis.server.model.GroupListResponse
 import jarvis.server.model.GroupMembershipPayload
@@ -433,6 +435,35 @@ fun main() {
                     HttpStatusCode.OK,
                     GroupListResponse(
                         items = groups.map { GroupPayload(groupId = it.groupId, name = it.name) },
+                    ),
+                )
+            }
+
+            post("/api/groups/create") {
+                val principal = authService.authenticateAccess(call.request.header("Authorization"))
+                if (principal == null) {
+                    call.respond(HttpStatusCode.Unauthorized, mapOf("message" to "UNAUTHORIZED"))
+                    return@post
+                }
+                val request = call.safeReceive<CreateGroupRequest>() ?: run {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("message" to "INVALID_REQUEST_BODY"))
+                    return@post
+                }
+                val groupName = request.name.trim()
+                if (groupName.isEmpty() || groupName.length > 64) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("message" to "INVALID_GROUP_NAME"))
+                    return@post
+                }
+                val created = chatStore.createGroupForUser(principal.userId, groupName) ?: run {
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("message" to "CREATE_GROUP_FAILED"))
+                    return@post
+                }
+                call.respond(
+                    HttpStatusCode.Created,
+                    CreateGroupResponse(
+                        group = GroupPayload(groupId = created.groupId, name = created.groupName),
+                        membership = GroupMembershipPayload(joinedAt = created.joinedAt),
+                        joinCode = created.joinCode,
                     ),
                 )
             }

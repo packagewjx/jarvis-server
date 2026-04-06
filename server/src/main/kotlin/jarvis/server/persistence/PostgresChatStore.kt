@@ -543,6 +543,86 @@ class PostgresChatStore(
             }
         }
 
+    override suspend fun createGroupForUser(userId: String, groupName: String): CreatedGroup? = withContext(Dispatchers.IO) {
+        val normalizedName = groupName.trim()
+        if (normalizedName.isEmpty()) {
+            return@withContext null
+        }
+
+        repeat(8) {
+            val groupId = nextGroupId()
+            val joinCode = nextJoinCode()
+            val now = System.currentTimeMillis()
+            val created = dataSource.connection.use { connection ->
+                connection.autoCommit = false
+                try {
+                    val insertedGroup = connection.prepareStatement(
+                        """
+                        INSERT INTO chat_groups (group_id, name, created_at, updated_at)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT (group_id) DO NOTHING
+                        """.trimIndent(),
+                    ).use { statement ->
+                        statement.setString(1, groupId)
+                        statement.setString(2, normalizedName)
+                        statement.setLong(3, now)
+                        statement.setLong(4, now)
+                        statement.executeUpdate()
+                    }
+                    if (insertedGroup == 0) {
+                        connection.rollback()
+                        return@use null
+                    }
+
+                    val insertedInvite = connection.prepareStatement(
+                        """
+                        INSERT INTO group_invites (invite_code, group_id, expires_at, disabled, created_at)
+                        VALUES (?, ?, NULL, FALSE, ?)
+                        ON CONFLICT (invite_code) DO NOTHING
+                        """.trimIndent(),
+                    ).use { statement ->
+                        statement.setString(1, joinCode)
+                        statement.setString(2, groupId)
+                        statement.setLong(3, now)
+                        statement.executeUpdate()
+                    }
+                    if (insertedInvite == 0) {
+                        connection.rollback()
+                        return@use null
+                    }
+
+                    connection.prepareStatement(
+                        """
+                        INSERT INTO group_memberships (user_id, group_id, joined_at)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT (user_id, group_id) DO NOTHING
+                        """.trimIndent(),
+                    ).use { statement ->
+                        statement.setString(1, userId)
+                        statement.setString(2, groupId)
+                        statement.setLong(3, now)
+                        statement.executeUpdate()
+                    }
+
+                    connection.commit()
+                    CreatedGroup(
+                        groupId = groupId,
+                        groupName = normalizedName,
+                        joinedAt = now,
+                        joinCode = joinCode,
+                    )
+                } catch (ex: Exception) {
+                    connection.rollback()
+                    throw ex
+                }
+            }
+            if (created != null) {
+                return@withContext created
+            }
+        }
+        null
+    }
+
     override suspend fun joinGroupByInvite(userId: String, joinCode: String): GroupMembership? = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         dataSource.connection.use { connection ->
@@ -1170,4 +1250,9 @@ class PostgresChatStore(
     }
 
     private fun nextUserId(): String = "u_${UUID.randomUUID().toString().replace("-", "").take(24)}"
+
+    private fun nextGroupId(): String = "g_${UUID.randomUUID().toString().replace("-", "").take(24)}"
+
+    private fun nextJoinCode(): String =
+        "INVITE-${UUID.randomUUID().toString().replace("-", "").take(8).uppercase()}"
 }

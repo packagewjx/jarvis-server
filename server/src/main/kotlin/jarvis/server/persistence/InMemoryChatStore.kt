@@ -282,6 +282,32 @@ class InMemoryChatStore : ChatStore {
         }
     }
 
+    override suspend fun createGroupForUser(userId: String, groupName: String): CreatedGroup? {
+        return mutex.withLock {
+            if (!usersById.containsKey(userId)) {
+                return@withLock null
+            }
+            val normalizedName = groupName.trim()
+            if (normalizedName.isEmpty()) {
+                return@withLock null
+            }
+            val now = System.currentTimeMillis()
+            val groupId = nextGroupId()
+            val joinCode = nextJoinCode()
+
+            groupsById[groupId] = GroupSummary(groupId = groupId, name = normalizedName)
+            inviteCodeToGroup[joinCode] = groupId
+            memberships.getOrPut(userId) { linkedSetOf() } += groupId
+
+            CreatedGroup(
+                groupId = groupId,
+                groupName = normalizedName,
+                joinedAt = now,
+                joinCode = joinCode,
+            )
+        }
+    }
+
     override suspend fun joinGroupByInvite(userId: String, joinCode: String): GroupMembership? {
         return mutex.withLock {
             val groupId = inviteCodeToGroup[joinCode] ?: return@withLock null
@@ -376,4 +402,23 @@ class InMemoryChatStore : ChatStore {
 
     private fun runKey(userId: String, groupId: String, clientMessageId: String): String =
         "$userId::$groupId::$clientMessageId"
+
+    private fun nextGroupId(): String {
+        while (true) {
+            val candidate = "g_${UUID.randomUUID().toString().replace("-", "").take(16)}"
+            if (!groupsById.containsKey(candidate)) {
+                return candidate
+            }
+        }
+    }
+
+    private fun nextJoinCode(): String {
+        while (true) {
+            val suffix = UUID.randomUUID().toString().replace("-", "").take(8).uppercase()
+            val candidate = "INVITE-$suffix"
+            if (!inviteCodeToGroup.containsKey(candidate)) {
+                return candidate
+            }
+        }
+    }
 }

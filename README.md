@@ -208,6 +208,7 @@ Client recommendation:
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
 - `GET /api/groups/mine`
+- `POST /api/groups/create` (body: `name`, creator auto-joins and receives `join_code`)
 - `POST /api/groups/join` (body: `join_code`)
 
 By default the script runs OpenClaw CLI via `npx openclaw` inside `openclaw-channel/`.

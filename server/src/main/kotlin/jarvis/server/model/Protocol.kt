@@ -233,6 +233,11 @@ data class JoinGroupRequest(
 )
 
 @Serializable
+data class CreateGroupRequest(
+    val name: String,
+)
+
+@Serializable
 data class GroupPayload(
     @SerialName("group_id") val groupId: String,
     val name: String,
@@ -252,6 +257,13 @@ data class GroupMembershipPayload(
 data class JoinGroupResponse(
     val group: GroupPayload,
     val membership: GroupMembershipPayload,
+)
+
+@Serializable
+data class CreateGroupResponse(
+    val group: GroupPayload,
+    val membership: GroupMembershipPayload,
+    @SerialName("join_code") val joinCode: String,
 )
 
 @Serializable
