@@ -8,6 +8,7 @@ data class AppConfig(
     val channel: ChannelConfig,
     val iat: XfyunIatConfig,
     val tts: XfyunTtsConfig,
+    val isv: XfyunIsvConfig,
     val database: DatabaseConfig,
     val chatPersistence: ChatPersistenceConfig,
     val jwt: JwtConfig,
@@ -20,6 +21,7 @@ data class AppConfig(
                 channel = ChannelConfig.fromEnvironment(),
                 iat = XfyunIatConfig.fromEnvironment(),
                 tts = XfyunTtsConfig.fromEnvironment(),
+                isv = XfyunIsvConfig.fromEnvironment(),
                 database = DatabaseConfig.fromEnvironment(),
                 chatPersistence = ChatPersistenceConfig.fromEnvironment(),
                 jwt = JwtConfig.fromEnvironment(),
@@ -182,6 +184,45 @@ data class XfyunTtsConfig(
                 defaultSampleRate = env("JARVIS_XFYUN_TTS_DEFAULT_SAMPLE_RATE", "16000").toInt(),
                 defaultAudioEncoding = env("JARVIS_XFYUN_TTS_DEFAULT_AUDIO_ENCODING", "lame"),
                 defaultTextEncoding = env("JARVIS_XFYUN_TTS_DEFAULT_TEXT_ENCODING", "utf8"),
+            )
+        }
+
+        private fun env(name: String, default: String? = null): String {
+            return System.getenv(name)
+                ?: default
+                ?: error("Missing required environment variable: $name")
+        }
+
+        private fun optionalEnv(name: String): String? =
+            System.getenv(name)?.trim()?.takeIf { it.isNotEmpty() }
+
+        private fun normalizePath(path: String): String =
+            if (path.startsWith("/")) path else "/$path"
+    }
+}
+
+data class XfyunIsvConfig(
+    val appId: String?,
+    val apiKey: String?,
+    val apiSecret: String?,
+    val host: String,
+    val path: String,
+    val ttlSec: Long,
+    val rateLimitPerMinute: Int,
+) {
+    companion object {
+        fun fromEnvironment(): XfyunIsvConfig {
+            return XfyunIsvConfig(
+                appId = optionalEnv("JARVIS_XFYUN_ISV_APP_ID")
+                    ?: optionalEnv("JARVIS_XFYUN_IAT_APP_ID"),
+                apiKey = optionalEnv("JARVIS_XFYUN_ISV_API_KEY")
+                    ?: optionalEnv("JARVIS_XFYUN_IAT_API_KEY"),
+                apiSecret = optionalEnv("JARVIS_XFYUN_ISV_API_SECRET")
+                    ?: optionalEnv("JARVIS_XFYUN_IAT_API_SECRET"),
+                host = env("JARVIS_XFYUN_ISV_HOST", "api.xf-yun.com"),
+                path = normalizePath(env("JARVIS_XFYUN_ISV_PATH", "/v1/private/s1aa729d0")),
+                ttlSec = env("JARVIS_XFYUN_ISV_TTL_SEC", "120").toLong(),
+                rateLimitPerMinute = env("JARVIS_XFYUN_ISV_RATE_LIMIT_PER_MIN", "30").toInt(),
             )
         }
 

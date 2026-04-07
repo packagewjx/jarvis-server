@@ -71,3 +71,35 @@ data class TtsSessionConfig(
     val auf: String,
     val tte: String,
 )
+
+@Serializable
+data class IsvSignUrlSuccessResponse(
+    val code: Int = 0,
+    val message: String = "ok",
+    val data: IsvSignUrlResponseData,
+    val traceId: String,
+)
+
+@Serializable
+data class IsvSignUrlErrorResponse(
+    val code: Int,
+    val message: String,
+    val detail: String,
+    val traceId: String,
+)
+
+@Serializable
+data class IsvSignUrlResponseData(
+    val requestUrl: String,
+    val expireAt: Long,
+    val ttlSec: Long,
+    val config: IsvSessionConfig,
+)
+
+@Serializable
+data class IsvSessionConfig(
+    val appId: String,
+    val host: String,
+    val path: String,
+    val method: String,
+)

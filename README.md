@@ -60,6 +60,13 @@ This repository contains a two-module bridge between a chat client and OpenClaw:
 - `JARVIS_XFYUN_TTS_DEFAULT_SAMPLE_RATE` default `16000` (allowed: `16000`/`8000`)
 - `JARVIS_XFYUN_TTS_DEFAULT_AUDIO_ENCODING` default `lame` (allowed: `lame`/`raw`/`speex`)
 - `JARVIS_XFYUN_TTS_DEFAULT_TEXT_ENCODING` default `utf8` (allowed: `utf8`/`unicode`)
+- `JARVIS_XFYUN_ISV_APP_ID` optional; defaults to `JARVIS_XFYUN_IAT_APP_ID` when omitted
+- `JARVIS_XFYUN_ISV_API_KEY` optional; defaults to `JARVIS_XFYUN_IAT_API_KEY` when omitted
+- `JARVIS_XFYUN_ISV_API_SECRET` optional; defaults to `JARVIS_XFYUN_IAT_API_SECRET` when omitted
+- `JARVIS_XFYUN_ISV_HOST` default `api.xf-yun.com`
+- `JARVIS_XFYUN_ISV_PATH` default `/v1/private/s1aa729d0`
+- `JARVIS_XFYUN_ISV_TTL_SEC` default `120`
+- `JARVIS_XFYUN_ISV_RATE_LIMIT_PER_MIN` default `30`
 - `JARVIS_CHANNEL_BASE_URL` required, must start with `https://`
 - `JARVIS_CHANNEL_AUTH_TOKEN` required
 - `JARVIS_CHANNEL_CONNECT_TIMEOUT_MS` default `10000`
@@ -181,6 +188,19 @@ Optional query parameters:
 
 Success response includes `data.wsUrl`, `expireAt`, `ttlSec`, and the effective TTS session config.
 Client should use returned `data.config.appId/aue/auf/vcn/speed/pitch/volume/tte` directly in XFYun WS request frames.
+
+### ISV sign-url API
+
+`server` now exposes:
+
+`GET /api/voice/isv-sign-url`
+
+Use an authenticated access token:
+
+`Authorization: Bearer <access_token>`
+
+Success response includes `data.requestUrl`, `expireAt`, `ttlSec`, and the effective ISV request config.
+Client should use returned `data.requestUrl` directly for XFYun ISV HTTP request URL, and set `header.app_id` from `data.config.appId`.
 
 ### Chat events sync API
 

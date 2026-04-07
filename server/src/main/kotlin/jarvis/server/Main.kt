@@ -36,6 +36,8 @@ import jarvis.server.model.GroupMembershipPayload
 import jarvis.server.model.GroupPayload
 import jarvis.server.model.IatSignUrlErrorResponse
 import jarvis.server.model.IatSignUrlSuccessResponse
+import jarvis.server.model.IsvSignUrlErrorResponse
+import jarvis.server.model.IsvSignUrlSuccessResponse
 import jarvis.server.model.JoinGroupRequest
 import jarvis.server.model.JoinGroupResponse
 import jarvis.server.model.PasswordChangeRequest
@@ -58,6 +60,8 @@ import jarvis.server.service.AuthService
 import jarvis.server.service.ChatBridgeService
 import jarvis.server.service.IatSignResult
 import jarvis.server.service.IatSignUrlService
+import jarvis.server.service.IsvSignResult
+import jarvis.server.service.IsvSignUrlService
 import jarvis.server.service.LoginResult
 import jarvis.server.service.PasswordChangeResult
 import jarvis.server.service.PasswordForgotResult
@@ -97,6 +101,7 @@ fun main() {
     val chatBridgeService = ChatBridgeService(gateway, chatStore, sharedJson)
     val iatSignUrlService = IatSignUrlService(config.iat)
     val ttsSignUrlService = TtsSignUrlService(config.tts)
+    val isvSignUrlService = IsvSignUrlService(config.isv)
 
     embeddedServer(Netty, host = config.host, port = config.port) {
         install(WebSockets)
@@ -595,6 +600,55 @@ fun main() {
                         call.respond(
                             status,
                             TtsSignUrlErrorResponse(
+                                code = result.code,
+                                message = result.message,
+                                detail = result.detail,
+                                traceId = traceId,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            get("/api/voice/isv-sign-url") {
+                val traceId = "req_${System.currentTimeMillis()}"
+                val principal = authService.authenticateAccess(call.request.header("Authorization"))
+                if (principal == null) {
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        IsvSignUrlErrorResponse(
+                            code = 40101,
+                            message = "UNAUTHORIZED",
+                            detail = "missing or invalid bearer token",
+                            traceId = traceId,
+                        ),
+                    )
+                    return@get
+                }
+
+                when (
+                    val result = isvSignUrlService.createSignedUrl(
+                        userKey = principal.userId,
+                    )
+                ) {
+                    is IsvSignResult.Success -> {
+                        call.respond(
+                            HttpStatusCode.OK,
+                            IsvSignUrlSuccessResponse(
+                                data = result.data,
+                                traceId = traceId,
+                            ),
+                        )
+                    }
+                    is IsvSignResult.Error -> {
+                        val status = when (result.code) {
+                            40101 -> HttpStatusCode.Unauthorized
+                            42901 -> HttpStatusCode.TooManyRequests
+                            else -> HttpStatusCode.InternalServerError
+                        }
+                        call.respond(
+                            status,
+                            IsvSignUrlErrorResponse(
                                 code = result.code,
                                 message = result.message,
                                 detail = result.detail,
