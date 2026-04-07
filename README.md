@@ -60,6 +60,23 @@ This repository contains a two-module bridge between a chat client and OpenClaw:
 - `JARVIS_XFYUN_TTS_DEFAULT_SAMPLE_RATE` default `16000` (allowed: `16000`/`8000`)
 - `JARVIS_XFYUN_TTS_DEFAULT_AUDIO_ENCODING` default `lame` (allowed: `lame`/`raw`/`speex`)
 - `JARVIS_XFYUN_TTS_DEFAULT_TEXT_ENCODING` default `utf8` (allowed: `utf8`/`unicode`)
+- `JARVIS_XFYUN_SUPER_TTS_APP_ID` optional; defaults to `JARVIS_XFYUN_IAT_APP_ID` when omitted
+- `JARVIS_XFYUN_SUPER_TTS_API_KEY` optional; defaults to `JARVIS_XFYUN_IAT_API_KEY` when omitted
+- `JARVIS_XFYUN_SUPER_TTS_API_SECRET` optional; defaults to `JARVIS_XFYUN_IAT_API_SECRET` when omitted
+- `JARVIS_XFYUN_SUPER_TTS_HOST` default `cbm01.cn-huabei-1.xf-yun.com`
+- `JARVIS_XFYUN_SUPER_TTS_PATH` default `/v1/private/mcd9m97e6`
+- `JARVIS_XFYUN_SUPER_TTS_TTL_SEC` default `120`
+- `JARVIS_XFYUN_SUPER_TTS_RATE_LIMIT_PER_MIN` default `30`
+- `JARVIS_XFYUN_SUPER_TTS_DEFAULT_VCN` default `x4_lingxiaoxuan_oral`
+- `JARVIS_XFYUN_SUPER_TTS_DEFAULT_SPEED` default `50`
+- `JARVIS_XFYUN_SUPER_TTS_DEFAULT_PITCH` default `50`
+- `JARVIS_XFYUN_SUPER_TTS_DEFAULT_VOLUME` default `50`
+- `JARVIS_XFYUN_SUPER_TTS_DEFAULT_SAMPLE_RATE` default `24000` (allowed: `8000`/`16000`/`24000`)
+- `JARVIS_XFYUN_SUPER_TTS_DEFAULT_AUDIO_ENCODING` default `raw` (allowed: `raw`/`lame`/`speex`/`speex-wb`)
+- `JARVIS_XFYUN_SUPER_TTS_DEFAULT_REG` default `0` (allowed: `0`/`1`)
+- `JARVIS_XFYUN_SUPER_TTS_DEFAULT_RDN` default `0` (allowed: `0`/`1`)
+- `JARVIS_XFYUN_SUPER_TTS_DEFAULT_RHY` default `0` (allowed: `0`/`1`)
+- `JARVIS_XFYUN_SUPER_TTS_DEFAULT_SCN` default `0` (allowed: `0`/`1`)
 - `JARVIS_XFYUN_ISV_APP_ID` optional; defaults to `JARVIS_XFYUN_IAT_APP_ID` when omitted
 - `JARVIS_XFYUN_ISV_API_KEY` optional; defaults to `JARVIS_XFYUN_IAT_API_KEY` when omitted
 - `JARVIS_XFYUN_ISV_API_SECRET` optional; defaults to `JARVIS_XFYUN_IAT_API_SECRET` when omitted
@@ -188,6 +205,32 @@ Optional query parameters:
 
 Success response includes `data.wsUrl`, `expireAt`, `ttlSec`, and the effective TTS session config.
 Client should use returned `data.config.appId/aue/auf/vcn/speed/pitch/volume/tte` directly in XFYun WS request frames.
+
+### Super Smart-TTS sign-url API
+
+`server` now exposes:
+
+`GET /api/voice/super-tts-sign-url`
+
+Use an authenticated access token:
+
+`Authorization: Bearer <access_token>`
+
+Optional query parameters:
+
+- `vcn` (or alias `voice`)
+- `speed` (`0..100`)
+- `pitch` (`0..100`)
+- `volume` (`0..100`)
+- `sampleRate` (`8000` / `16000` / `24000`)
+- `audioEncoding` (or alias `aue`, `raw` / `lame` / `speex` / `speex-wb`)
+- `reg` (`0` / `1`)
+- `rdn` (`0` / `1`)
+- `rhy` (`0` / `1`)
+- `scn` (`0` / `1`)
+
+Success response includes `data.wsUrl`, `expireAt`, `ttlSec`, and effective Super Smart-TTS session config.
+Client should use returned `data.config.appId/vcn/speed/pitch/volume/aue/auf/reg/rdn/rhy/scn` in XFYun WS request frames.
 
 ### ISV sign-url API
 

@@ -8,6 +8,7 @@ data class AppConfig(
     val channel: ChannelConfig,
     val iat: XfyunIatConfig,
     val tts: XfyunTtsConfig,
+    val superTts: XfyunSuperTtsConfig,
     val isv: XfyunIsvConfig,
     val database: DatabaseConfig,
     val chatPersistence: ChatPersistenceConfig,
@@ -21,6 +22,7 @@ data class AppConfig(
                 channel = ChannelConfig.fromEnvironment(),
                 iat = XfyunIatConfig.fromEnvironment(),
                 tts = XfyunTtsConfig.fromEnvironment(),
+                superTts = XfyunSuperTtsConfig.fromEnvironment(),
                 isv = XfyunIsvConfig.fromEnvironment(),
                 database = DatabaseConfig.fromEnvironment(),
                 chatPersistence = ChatPersistenceConfig.fromEnvironment(),
@@ -184,6 +186,65 @@ data class XfyunTtsConfig(
                 defaultSampleRate = env("JARVIS_XFYUN_TTS_DEFAULT_SAMPLE_RATE", "16000").toInt(),
                 defaultAudioEncoding = env("JARVIS_XFYUN_TTS_DEFAULT_AUDIO_ENCODING", "lame"),
                 defaultTextEncoding = env("JARVIS_XFYUN_TTS_DEFAULT_TEXT_ENCODING", "utf8"),
+            )
+        }
+
+        private fun env(name: String, default: String? = null): String {
+            return System.getenv(name)
+                ?: default
+                ?: error("Missing required environment variable: $name")
+        }
+
+        private fun optionalEnv(name: String): String? =
+            System.getenv(name)?.trim()?.takeIf { it.isNotEmpty() }
+
+        private fun normalizePath(path: String): String =
+            if (path.startsWith("/")) path else "/$path"
+    }
+}
+
+data class XfyunSuperTtsConfig(
+    val appId: String?,
+    val apiKey: String?,
+    val apiSecret: String?,
+    val host: String,
+    val path: String,
+    val ttlSec: Long,
+    val rateLimitPerMinute: Int,
+    val defaultVcn: String,
+    val defaultSpeed: Int,
+    val defaultPitch: Int,
+    val defaultVolume: Int,
+    val defaultSampleRate: Int,
+    val defaultAudioEncoding: String,
+    val defaultReg: Int,
+    val defaultRdn: Int,
+    val defaultRhy: Int,
+    val defaultScn: Int,
+) {
+    companion object {
+        fun fromEnvironment(): XfyunSuperTtsConfig {
+            return XfyunSuperTtsConfig(
+                appId = optionalEnv("JARVIS_XFYUN_SUPER_TTS_APP_ID")
+                    ?: optionalEnv("JARVIS_XFYUN_IAT_APP_ID"),
+                apiKey = optionalEnv("JARVIS_XFYUN_SUPER_TTS_API_KEY")
+                    ?: optionalEnv("JARVIS_XFYUN_IAT_API_KEY"),
+                apiSecret = optionalEnv("JARVIS_XFYUN_SUPER_TTS_API_SECRET")
+                    ?: optionalEnv("JARVIS_XFYUN_IAT_API_SECRET"),
+                host = env("JARVIS_XFYUN_SUPER_TTS_HOST", "cbm01.cn-huabei-1.xf-yun.com"),
+                path = normalizePath(env("JARVIS_XFYUN_SUPER_TTS_PATH", "/v1/private/mcd9m97e6")),
+                ttlSec = env("JARVIS_XFYUN_SUPER_TTS_TTL_SEC", "120").toLong(),
+                rateLimitPerMinute = env("JARVIS_XFYUN_SUPER_TTS_RATE_LIMIT_PER_MIN", "30").toInt(),
+                defaultVcn = env("JARVIS_XFYUN_SUPER_TTS_DEFAULT_VCN", "x4_lingxiaoxuan_oral"),
+                defaultSpeed = env("JARVIS_XFYUN_SUPER_TTS_DEFAULT_SPEED", "50").toInt(),
+                defaultPitch = env("JARVIS_XFYUN_SUPER_TTS_DEFAULT_PITCH", "50").toInt(),
+                defaultVolume = env("JARVIS_XFYUN_SUPER_TTS_DEFAULT_VOLUME", "50").toInt(),
+                defaultSampleRate = env("JARVIS_XFYUN_SUPER_TTS_DEFAULT_SAMPLE_RATE", "24000").toInt(),
+                defaultAudioEncoding = env("JARVIS_XFYUN_SUPER_TTS_DEFAULT_AUDIO_ENCODING", "raw"),
+                defaultReg = env("JARVIS_XFYUN_SUPER_TTS_DEFAULT_REG", "0").toInt(),
+                defaultRdn = env("JARVIS_XFYUN_SUPER_TTS_DEFAULT_RDN", "0").toInt(),
+                defaultRhy = env("JARVIS_XFYUN_SUPER_TTS_DEFAULT_RHY", "0").toInt(),
+                defaultScn = env("JARVIS_XFYUN_SUPER_TTS_DEFAULT_SCN", "0").toInt(),
             )
         }
 

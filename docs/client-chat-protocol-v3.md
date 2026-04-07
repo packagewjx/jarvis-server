@@ -4,6 +4,7 @@
 
 | 版本 | 日期 | 变更摘要 |
 | --- | --- | --- |
+| v3.4 | 2026-04-07 | 新增讯飞 Super Smart-TTS 签名接口 `GET /api/voice/super-tts-sign-url`，客户端可直接使用返回 `wsUrl` 建立语音合成连接。 |
 | v3.3 | 2026-04-07 | 新增讯飞声纹识别签名接口 `GET /api/voice/isv-sign-url`，客户端可直接使用返回 `requestUrl` 调用 ISV HTTP API。 |
 | v3.2 | 2026-04-06 | 明确 OpenClaw 会话隔离规则：服务端按 `group_id` 映射独立 OpenClaw session（`grp_<group_id>`），不同群组上下文不共享。 |
 | v3.1 | 2026-04-06 | 服务端新增 `POST /api/groups/create`（创建群并自动加入，返回 `join_code`）；群组引导页从“创建占位”升级为“可创建 + 可邀请码入群”。客户端需接入创建群接口并更新首登流程。 |
@@ -355,7 +356,7 @@ Client -> Server：
 4. 聊天页继续使用 `events/sync + ws` 的群组维度同步。
 5. 保持 `message_id` 双 ID 语义和 `event_id` 去重策略。
 
-## 11. 语音签名接口（IAT + TTS + ISV）
+## 11. 语音签名接口（IAT + TTS + Super Smart-TTS + ISV）
 
 ### 11.1 IAT（语音识别）
 
@@ -369,7 +370,13 @@ Client -> Server：
 - 可选参数：`vcn`（或 `voice`）、`speed`、`pitch`、`volume`、`sampleRate`、`audioEncoding`、`textEncoding`（或 `tte`）
 - 客户端应使用返回的 `data.config.appId/vcn/speed/pitch/volume/aue/auf/tte` 作为讯飞请求参数源
 
-### 11.3 ISV（声纹识别）
+### 11.3 Super Smart-TTS（超拟人语音合成）
+
+- `GET /api/voice/super-tts-sign-url`
+- 可选参数：`vcn`（或 `voice`）、`speed`、`pitch`、`volume`、`sampleRate`、`audioEncoding`（或 `aue`）、`reg`、`rdn`、`rhy`、`scn`
+- 客户端应使用返回的 `data.config.appId/vcn/speed/pitch/volume/aue/auf/reg/rdn/rhy/scn` 作为讯飞请求参数源
+
+### 11.4 ISV（声纹识别）
 
 - `GET /api/voice/isv-sign-url`
 - 无业务参数，服务端返回已签名 HTTP URL

@@ -73,6 +73,45 @@ data class TtsSessionConfig(
 )
 
 @Serializable
+data class SuperTtsSignUrlSuccessResponse(
+    val code: Int = 0,
+    val message: String = "ok",
+    val data: SuperTtsSignUrlResponseData,
+    val traceId: String,
+)
+
+@Serializable
+data class SuperTtsSignUrlErrorResponse(
+    val code: Int,
+    val message: String,
+    val detail: String,
+    val traceId: String,
+)
+
+@Serializable
+data class SuperTtsSignUrlResponseData(
+    val wsUrl: String,
+    val expireAt: Long,
+    val ttlSec: Long,
+    val config: SuperTtsSessionConfig,
+)
+
+@Serializable
+data class SuperTtsSessionConfig(
+    val appId: String,
+    val vcn: String,
+    val speed: Int,
+    val pitch: Int,
+    val volume: Int,
+    val aue: String,
+    val auf: String,
+    val reg: Int,
+    val rdn: Int,
+    val rhy: Int,
+    val scn: Int,
+)
+
+@Serializable
 data class IsvSignUrlSuccessResponse(
     val code: Int = 0,
     val message: String = "ok",

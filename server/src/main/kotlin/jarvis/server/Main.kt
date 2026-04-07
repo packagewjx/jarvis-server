@@ -44,6 +44,8 @@ import jarvis.server.model.PasswordChangeRequest
 import jarvis.server.model.PasswordForgotRequest
 import jarvis.server.model.PasswordForgotResponse
 import jarvis.server.model.PasswordResetRequest
+import jarvis.server.model.SuperTtsSignUrlErrorResponse
+import jarvis.server.model.SuperTtsSignUrlSuccessResponse
 import jarvis.server.model.TtsSignUrlErrorResponse
 import jarvis.server.model.TtsSignUrlSuccessResponse
 import jarvis.server.model.UserMeResponse
@@ -68,6 +70,8 @@ import jarvis.server.service.PasswordForgotResult
 import jarvis.server.service.PasswordResetResult
 import jarvis.server.service.RefreshResult
 import jarvis.server.service.RegisterResult
+import jarvis.server.service.SuperTtsSignResult
+import jarvis.server.service.SuperTtsSignUrlService
 import jarvis.server.service.TtsSignResult
 import jarvis.server.service.TtsSignUrlService
 import jarvis.server.service.VerifyConfirmResult
@@ -101,6 +105,7 @@ fun main() {
     val chatBridgeService = ChatBridgeService(gateway, chatStore, sharedJson)
     val iatSignUrlService = IatSignUrlService(config.iat)
     val ttsSignUrlService = TtsSignUrlService(config.tts)
+    val superTtsSignUrlService = SuperTtsSignUrlService(config.superTts)
     val isvSignUrlService = IsvSignUrlService(config.isv)
 
     embeddedServer(Netty, host = config.host, port = config.port) {
@@ -600,6 +605,67 @@ fun main() {
                         call.respond(
                             status,
                             TtsSignUrlErrorResponse(
+                                code = result.code,
+                                message = result.message,
+                                detail = result.detail,
+                                traceId = traceId,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            get("/api/voice/super-tts-sign-url") {
+                val traceId = "req_${System.currentTimeMillis()}"
+                val principal = authService.authenticateAccess(call.request.header("Authorization"))
+                if (principal == null) {
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        SuperTtsSignUrlErrorResponse(
+                            code = 40101,
+                            message = "UNAUTHORIZED",
+                            detail = "missing or invalid bearer token",
+                            traceId = traceId,
+                        ),
+                    )
+                    return@get
+                }
+
+                val query = call.request.queryParameters
+                when (
+                    val result = superTtsSignUrlService.createSignedUrl(
+                        userKey = principal.userId,
+                        vcnRaw = query["vcn"] ?: query["voice"],
+                        speedRaw = query["speed"],
+                        pitchRaw = query["pitch"],
+                        volumeRaw = query["volume"],
+                        sampleRateRaw = query["sampleRate"],
+                        audioEncodingRaw = query["audioEncoding"] ?: query["aue"],
+                        regRaw = query["reg"],
+                        rdnRaw = query["rdn"],
+                        rhyRaw = query["rhy"],
+                        scnRaw = query["scn"],
+                    )
+                ) {
+                    is SuperTtsSignResult.Success -> {
+                        call.respond(
+                            HttpStatusCode.OK,
+                            SuperTtsSignUrlSuccessResponse(
+                                data = result.data,
+                                traceId = traceId,
+                            ),
+                        )
+                    }
+                    is SuperTtsSignResult.Error -> {
+                        val status = when (result.code) {
+                            40001 -> HttpStatusCode.BadRequest
+                            40101 -> HttpStatusCode.Unauthorized
+                            42901 -> HttpStatusCode.TooManyRequests
+                            else -> HttpStatusCode.InternalServerError
+                        }
+                        call.respond(
+                            status,
+                            SuperTtsSignUrlErrorResponse(
                                 code = result.code,
                                 message = result.message,
                                 detail = result.detail,
